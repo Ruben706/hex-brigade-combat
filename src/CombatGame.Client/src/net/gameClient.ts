@@ -1,13 +1,15 @@
 import * as signalR from '@microsoft/signalr';
 import type { GameCommandDto, GameMode, GameStateDto } from '../types/game';
 
+const hubUrl = import.meta.env.VITE_HUB_URL || '/hub/game';
+
 export class GameClient {
   private connection: signalR.HubConnection;
   private onStateChanged?: (state: GameStateDto) => void;
 
   constructor() {
     this.connection = new signalR.HubConnectionBuilder()
-      .withUrl('/hub/game')
+      .withUrl(hubUrl)
       .withAutomaticReconnect()
       .build();
 

@@ -56,6 +56,36 @@ Open `http://localhost:5173` in your browser.
 dotnet test
 ```
 
+## Deployment (GitHub Pages)
+
+The Vite client deploys automatically to GitHub Pages on every push to `master` via [`.github/workflows/deploy-pages.yml`](.github/workflows/deploy-pages.yml).
+
+**Live site:** https://ruben706.github.io/hex-brigade-combat/
+
+### First-time setup
+
+1. Open the repo on GitHub → **Settings** → **Pages**
+2. Under **Build and deployment**, set **Source** to **GitHub Actions**
+3. Push to `master` — the deploy workflow runs automatically
+
+### Backend for production play
+
+GitHub Pages hosts static files only. The game server (`CombatGame.Server`) must run elsewhere for multiplayer/hotseat to work online.
+
+1. Host the .NET server (Azure, Railway, Fly.io, etc.) and note its public URL
+2. In the GitHub repo, go to **Settings** → **Secrets and variables** → **Actions** → **Variables**
+3. Add repository variable `VITE_HUB_URL` = `https://your-server.example.com/hub/game`
+4. Re-run the **Deploy to GitHub Pages** workflow
+
+Without `VITE_HUB_URL`, the deployed site loads but cannot connect to a game server.
+
+### CI
+
+[`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs on push and pull requests:
+
+- `dotnet test` for game rules
+- Client TypeScript build
+
 ## Project structure
 
 ```
