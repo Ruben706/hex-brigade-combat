@@ -128,6 +128,10 @@ export class GameClient {
     await this.connect();
     return this.connection.invoke<GameStateDto | null>('GetState', gameId);
   }
+
+  beginSessionSync(_gameId: string): void {
+    // SignalR pushes StateChanged events; no HTTP polling needed.
+  }
 }
 
 export const gameClient = new GameClient();

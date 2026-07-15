@@ -23,6 +23,17 @@ internal static class TestMapHelper
     }
 }
 
+internal sealed class SequenceRandom : Random
+{
+    private readonly double[] _values;
+    private int _index;
+
+    public SequenceRandom(params double[] values) => _values = values;
+
+    public override double NextDouble() =>
+        _values[Math.Min(_index++, _values.Length - 1)];
+}
+
 public class DamageCalculatorTests
 {
     [Theory]
@@ -401,7 +412,7 @@ public class AccuracyTests
         tank.Position = new HexCoord(5, 7);
         enemy.Position = new HexCoord(7, 7);
         tank.TurnState.HasMoved = true;
-        state.Rng = new Random(0);
+        state.Rng = new SequenceRandom(0.99);
 
         var result = GameEngine.Execute(state, new GameCommand
         {
@@ -856,6 +867,9 @@ public class LobbyLoadoutTests
 
 public class DeploymentZoneTests
 {
+    private static readonly HexCoord Player0DeployTile = new(1, 10);
+    private static readonly HexCoord Player1DeployTile = new(23, 10);
+
     private static GameState CreateDeploymentState()
     {
         var state = DefaultSkirmishMap.CreateLobby("Deploy", 0);
@@ -886,10 +900,10 @@ public class DeploymentZoneTests
     public void DeployUnit_AcceptsValidZoneTile()
     {
         var state = CreateDeploymentState();
-        var zoneTile = ArmyBuilder.GetDeploymentZoneTiles(0).First(t =>
-            TerrainHelper.IsPassable(state.Grid.GetTerrain(t)));
+        Assert.True(ArmyBuilder.IsInDeploymentZone(0, Player0DeployTile));
+        Assert.True(TerrainHelper.IsPassable(state.Grid.GetTerrain(Player0DeployTile)));
 
-        var result = LobbyService.DeployUnit(state, 0, 0, zoneTile);
+        var result = LobbyService.DeployUnit(state, 0, 0, Player0DeployTile);
         Assert.True(result.Success);
     }
 
@@ -906,19 +920,15 @@ public class DeploymentZoneTests
     public void Battle_StartsWithLoadoutBrigadesAtDeployedPositions()
     {
         var state = CreateDeploymentState();
-        var zone0 = ArmyBuilder.GetDeploymentZoneTiles(0).First(t =>
-            TerrainHelper.IsPassable(state.Grid.GetTerrain(t)));
-        var zone1 = ArmyBuilder.GetDeploymentZoneTiles(1).First(t =>
-            TerrainHelper.IsPassable(state.Grid.GetTerrain(t)));
 
-        LobbyService.DeployUnit(state, 0, 0, zone0);
+        LobbyService.DeployUnit(state, 0, 0, Player0DeployTile);
         LobbyService.SetDeploymentReady(state, 0, true);
-        LobbyService.DeployUnit(state, 1, 0, zone1);
+        LobbyService.DeployUnit(state, 1, 0, Player1DeployTile);
         LobbyService.SetDeploymentReady(state, 1, true);
 
         Assert.Equal(GamePhase.InProgress, state.Phase);
         Assert.Equal(2, state.Brigades.Count);
-        Assert.Contains(state.Brigades, b => b.PlayerId == 0 && b.Position == zone0 && b.FromLoadout);
-        Assert.Contains(state.Brigades, b => b.PlayerId == 1 && b.Position == zone1 && b.FromLoadout);
+        Assert.Contains(state.Brigades, b => b.PlayerId == 0 && b.Position == Player0DeployTile && b.FromLoadout);
+        Assert.Contains(state.Brigades, b => b.PlayerId == 1 && b.Position == Player1DeployTile && b.FromLoadout);
     }
 }

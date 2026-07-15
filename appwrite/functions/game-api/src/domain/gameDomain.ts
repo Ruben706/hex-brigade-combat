@@ -1148,12 +1148,13 @@ function tryMoveTowardEnemy(state: InternalGameState, b: Brigade, ai: number): b
 // --- Mapper ---
 
 export function toDto(state: InternalGameState): GameStateDto {
+  const tileMap = state.tiles ?? {};
   return {
     gameId: state.gameId,
     mode: state.mode,
     gridWidth: state.gridWidth,
     gridHeight: state.gridHeight,
-    tiles: Object.entries(state.tiles).map(([key, terrain]) => {
+    tiles: Object.entries(tileMap).map(([key, terrain]) => {
       const [q, r] = key.split(',').map(Number);
       return { q, r, terrain };
     }),

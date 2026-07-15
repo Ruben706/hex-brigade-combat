@@ -225,6 +225,10 @@ function ensureMultiplayerStateHandler(): void {
       routeGamePhase();
     }
   });
+
+  if (gameId && 'beginSessionSync' in gameClient) {
+    (gameClient as { beginSessionSync: (id: string) => void }).beginSessionSync(gameId);
+  }
 }
 
 async function startGame(mode: GameMode, playerId: number): Promise<void> {

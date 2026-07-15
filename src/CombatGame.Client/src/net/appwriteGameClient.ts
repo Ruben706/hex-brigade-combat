@@ -33,7 +33,11 @@ async function invoke<T>(body: Record<string, unknown>): Promise<T> {
     throw new Error(execution.errors || 'Function execution failed');
   }
 
-  return JSON.parse(execution.responseBody) as T;
+  const parsed = JSON.parse(execution.responseBody) as T & { success?: boolean; error?: string };
+  if (parsed.success === false) {
+    throw new Error(parsed.error ?? 'Request failed');
+  }
+  return parsed;
 }
 
 export class AppwriteGameClient {
@@ -65,7 +69,8 @@ export class AppwriteGameClient {
     this.sessionGameId = null;
   }
 
-  private startSessionSync(gameId: string): void {
+  /** Start HTTP polling for opponent updates. Call after setStateHandler is registered. */
+  beginSessionSync(gameId: string): void {
     if (this.sessionGameId === gameId && this.sessionPollTimer != null) {
       return;
     }
@@ -85,8 +90,8 @@ export class AppwriteGameClient {
       }
     };
 
-    void pull();
     this.sessionPollTimer = setInterval(() => void pull(), SESSION_POLL_MS);
+    void pull();
   }
 
   async createGame(mode: GameMode): Promise<{ gameId: string; state: GameStateDto }> {
@@ -94,8 +99,8 @@ export class AppwriteGameClient {
       action: 'createGame',
       mode,
     });
-    if (result.state.mode === 'Multiplayer') {
-      this.startSessionSync(result.gameId);
+    if (!result.state || !result.gameId) {
+      throw new Error('Server did not return game state.');
     }
     return { gameId: result.gameId, state: result.state };
   }
@@ -109,7 +114,11 @@ export class AppwriteGameClient {
       lobbyName,
       playerId,
     });
-    this.startSessionSync(result.gameId);
+    if (!result.state || !result.gameId) {
+      throw new Error(
+        'Server did not return lobby state. Redeploy the game-api Appwrite function with lobby support.',
+      );
+    }
     return { gameId: result.gameId, state: result.state };
   }
 
@@ -129,9 +138,6 @@ export class AppwriteGameClient {
       gameId,
       playerId,
     });
-    if (result.success && result.state) {
-      this.startSessionSync(gameId);
-    }
     return result;
   }
 

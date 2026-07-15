@@ -15,7 +15,11 @@ function tilesToMap(tiles: TileDto[]): Record<string, string> {
 const PRE_BATTLE_PHASES = new Set(['Lobby', 'Loadout', 'Deployment']);
 
 /** Ensure tile data is present and each battle has a procedural map. */
-export function normalizeGameState(state: GameStateDto): GameStateDto {
+export function normalizeGameState(state: GameStateDto | null | undefined): GameStateDto {
+  if (!state) {
+    throw new Error('Game state is missing from the server response.');
+  }
+
   const raw = state as RawGameState;
   let tiles = state.tiles ?? raw.Tiles ?? [];
 
