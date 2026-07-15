@@ -4,6 +4,8 @@ dist/
 node_modules/
 appwrite/functions/game-api/dist/
 appwrite/functions/game-api/node_modules/
+appwrite/.deploy-stage/
+appwrite/.deploy-game-api.tar.gz
 *.user
 .vs/
 .idea/

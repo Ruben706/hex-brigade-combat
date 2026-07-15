@@ -1,4 +1,4 @@
-import { Functions, Realtime, ExecutionMethod } from 'appwrite';
+import { Channel, Functions, Realtime, ExecutionMethod } from 'appwrite';
 import {
   APPWRITE_FUNCTION_ID,
   APPWRITE_DATABASE_ID,
@@ -52,9 +52,10 @@ export class AppwriteGameClient {
     }
 
     const realtime = new Realtime(client);
-    const channel = `databases.${APPWRITE_DATABASE_ID}.collections.${APPWRITE_GAMES_COLLECTION_ID}.documents.${gameId}`;
+    const table = Channel.tablesdb(APPWRITE_DATABASE_ID).table(APPWRITE_GAMES_COLLECTION_ID);
+    const channels = [table.row(gameId).create(), table.row(gameId).update()];
 
-    this.subscription = await realtime.subscribe(channel, (event) => {
+    this.subscription = await realtime.subscribe(channels, (event) => {
       if (event.events.some((e) => e.includes('.update') || e.includes('.create'))) {
         const payload = event.payload as { clientState?: string };
         if (payload.clientState) {

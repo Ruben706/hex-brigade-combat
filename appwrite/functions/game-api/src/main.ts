@@ -1,4 +1,4 @@
-import { Client, Databases } from 'node-appwrite';
+import { Client, TablesDB } from 'node-appwrite';
 import {
   createSkirmish,
   executeCommand,
@@ -8,40 +8,51 @@ import {
   type GameMode,
 } from './domain/gameDomain.js';
 
-const DB_ID = process.env.APPWRITE_DATABASE_ID || 'combat';
-const COLLECTION_ID = process.env.APPWRITE_GAMES_COLLECTION_ID || 'games';
+const DB_ID = process.env.APPWRITE_DATABASE_ID || '6a5750b8002d1d05b18f';
+const TABLE_ID = process.env.APPWRITE_GAMES_COLLECTION_ID || 'games';
 
-function getDatabases(): Databases {
+function getTablesDB(): TablesDB {
   const client = new Client()
     .setEndpoint(process.env.APPWRITE_FUNCTION_API_ENDPOINT!)
     .setProject(process.env.APPWRITE_FUNCTION_PROJECT_ID!)
     .setKey(process.env.APPWRITE_API_KEY!);
-  return new Databases(client);
+  return new TablesDB(client);
 }
 
-async function loadState(databases: Databases, gameId: string): Promise<import('./domain/gameDomain.js').InternalGameState | null> {
+async function loadState(
+  tablesDB: TablesDB,
+  gameId: string,
+): Promise<import('./domain/gameDomain.js').InternalGameState | null> {
   try {
-    const doc = await databases.getDocument(DB_ID, COLLECTION_ID, gameId);
-    return JSON.parse(doc.state as string);
+    const row = await tablesDB.getRow({
+      databaseId: DB_ID,
+      tableId: TABLE_ID,
+      rowId: gameId,
+    });
+    return JSON.parse(row.state as string);
   } catch {
     return null;
   }
 }
 
-async function saveState(databases: Databases, state: import('./domain/gameDomain.js').InternalGameState): Promise<void> {
+async function saveState(
+  tablesDB: TablesDB,
+  state: import('./domain/gameDomain.js').InternalGameState,
+): Promise<void> {
   const dto = toDto(state);
-  const payload = {
+  const data = {
     state: JSON.stringify(state),
     clientState: JSON.stringify(dto),
     mode: dto.mode,
     connectedPlayers: JSON.stringify(dto.connectedPlayers),
   };
 
-  try {
-    await databases.updateDocument(DB_ID, COLLECTION_ID, state.gameId, payload);
-  } catch {
-    await databases.createDocument(DB_ID, COLLECTION_ID, state.gameId, payload);
-  }
+  await tablesDB.upsertRow({
+    databaseId: DB_ID,
+    tableId: TABLE_ID,
+    rowId: state.gameId,
+    data,
+  });
 }
 
 interface RequestBody {
@@ -63,14 +74,20 @@ export default async function handler({ req, res, log, error }: {
       return res.json({ status: 'ok', service: 'hex-brigade-combat' });
     }
 
-    const body: RequestBody = req.body ? JSON.parse(req.body) : {};
-    const databases = getDatabases();
+    const rawBody = req.body;
+    const body: RequestBody =
+      typeof rawBody === 'string'
+        ? rawBody
+          ? JSON.parse(rawBody)
+          : {}
+        : (rawBody ?? {});
+    const tablesDB = getTablesDB();
 
     switch (body.action) {
       case 'createGame': {
         const mode = body.mode || 'Hotseat';
         const internal = createSkirmish(mode);
-        await saveState(databases, internal);
+        await saveState(tablesDB, internal);
         const dto = toDto(internal);
         log(`Created game ${dto.gameId} mode=${mode}`);
         return res.json({ success: true, gameId: dto.gameId, state: dto });
@@ -80,12 +97,12 @@ export default async function handler({ req, res, log, error }: {
         if (!body.gameId || body.playerId === undefined) {
           return res.json({ success: false, error: 'gameId and playerId required' }, 400);
         }
-        const internal = await loadState(databases, body.gameId);
+        const internal = await loadState(tablesDB, body.gameId);
         if (!internal) return res.json({ success: false, error: 'Game not found' }, 404);
 
         if (!internal.connectedPlayers.includes(body.playerId)) {
           internal.connectedPlayers.push(body.playerId);
-          await saveState(databases, internal);
+          await saveState(tablesDB, internal);
         }
         return res.json({ success: true, state: toDto(internal) });
       }
@@ -95,7 +112,7 @@ export default async function handler({ req, res, log, error }: {
           return res.json({ success: false, error: 'gameId and command required' }, 400);
         }
 
-        const internal = await loadState(databases, body.gameId);
+        const internal = await loadState(tablesDB, body.gameId);
         if (!internal) return res.json({ success: false, error: 'Game not found' }, 404);
 
         const result = executeCommand(internal, body.command);
@@ -111,13 +128,13 @@ export default async function handler({ req, res, log, error }: {
           runAiTurn(internal);
         }
 
-        await saveState(databases, internal);
+        await saveState(tablesDB, internal);
         return res.json({ success: true, state: toDto(internal) });
       }
 
       case 'getState': {
         if (!body.gameId) return res.json({ success: false, error: 'gameId required' }, 400);
-        const internal = await loadState(databases, body.gameId);
+        const internal = await loadState(tablesDB, body.gameId);
         if (!internal) return res.json({ success: false, error: 'Game not found' }, 404);
         return res.json({ success: true, state: toDto(internal) });
       }

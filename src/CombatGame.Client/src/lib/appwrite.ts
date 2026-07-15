@@ -6,11 +6,13 @@ export const APPWRITE_PROJECT_NAME = 'Test project';
 
 /** Set this after deploying the game-api function (Appwrite Console → Functions). */
 export const APPWRITE_FUNCTION_ID =
-  import.meta.env.VITE_APPWRITE_FUNCTION_ID || '';
+  import.meta.env.VITE_APPWRITE_FUNCTION_ID || 'game-api';
 
+/** Your Appwrite database (one database is enough — games are stored in a table inside it). */
 export const APPWRITE_DATABASE_ID =
-  import.meta.env.VITE_APPWRITE_DATABASE_ID || 'combat';
+  import.meta.env.VITE_APPWRITE_DATABASE_ID || '6a5750b8002d1d05b18f';
 
+/** Table ID inside the database (Appwrite console calls these "tables", older docs say "collections"). */
 export const APPWRITE_GAMES_COLLECTION_ID =
   import.meta.env.VITE_APPWRITE_GAMES_COLLECTION_ID || 'games';
 

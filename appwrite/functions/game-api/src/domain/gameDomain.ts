@@ -1,4 +1,5 @@
 // Port of CombatGame.Domain — authoritative game rules for Appwrite Functions
+import { randomUUID } from 'node:crypto';
 
 export type UnitType = 'Infantry' | 'Tank' | 'Artillery' | 'AntiTank';
 export type DamageCategory = 'SmallArms' | 'HighExplosive' | 'AntiArmor';
@@ -217,7 +218,7 @@ function removeStatus(b: Brigade, type: string): void {
 export function createBrigade(type: UnitType, playerId: number, position: HexCoord): Brigade {
   const def = UNIT_DEFS[type];
   return {
-    id: crypto.randomUUID(),
+    id: randomUUID(),
     playerId,
     unitType: type,
     position,
@@ -405,7 +406,7 @@ function endTurn(state: InternalGameState): void {
 // --- Skirmish map ---
 
 export function createSkirmish(mode: GameMode): InternalGameState {
-  const gameId = crypto.randomUUID();
+  const gameId = randomUUID();
   const state: InternalGameState = {
     gameId,
     mode,
