@@ -13,7 +13,8 @@ public static class DefaultSkirmishMap
     public static GameState Create(GameMode mode)
     {
         var gameId = Guid.NewGuid();
-        var rng = new Random(gameId.GetHashCode());
+        var seed = gameId.ToString().Sum(c => c);
+        var rng = new Random(seed);
         var grid = MapGenerator.Generate(rng);
         var state = new GameState
         {

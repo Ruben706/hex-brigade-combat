@@ -1,3 +1,5 @@
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using CombatGame.Domain;
 using CombatGame.Domain.Enums;
 using CombatGame.Domain.Hex;
@@ -16,6 +18,7 @@ public sealed class GameStateDto
     public string Phase { get; init; } = "";
     public int? WinnerId { get; init; }
     public int AiPlayerId { get; init; }
+    [JsonPropertyName("tiles")]
     public List<TileDto> Tiles { get; init; } = [];
     public List<BrigadeDto> Brigades { get; init; } = [];
     public List<GameEventDto> EventLog { get; init; } = [];
@@ -24,8 +27,11 @@ public sealed class GameStateDto
 
 public sealed class TileDto
 {
+    [JsonPropertyName("q")]
     public int Q { get; init; }
+    [JsonPropertyName("r")]
     public int R { get; init; }
+    [JsonPropertyName("terrain")]
     public string Terrain { get; init; } = "";
 }
 

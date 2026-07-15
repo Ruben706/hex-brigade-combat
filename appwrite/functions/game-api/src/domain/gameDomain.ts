@@ -574,9 +574,33 @@ function endTurn(state: InternalGameState): void {
 
 // --- Skirmish map ---
 
+export function hashGameId(gameId: string): number {
+  return gameId.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
+}
+
+export function ensureMapGenerated(state: InternalGameState): void {
+  const tileCount = state.tiles ? Object.keys(state.tiles).length : 0;
+  const terrains = new Set(Object.values(state.tiles ?? {}));
+  const needsMap =
+    tileCount === 0 ||
+    terrains.size <= 1 ||
+    state.gridWidth !== MAP_SIZE ||
+    state.gridHeight !== MAP_SIZE;
+
+  if (!needsMap) {
+    return;
+  }
+
+  const seed = state.rngSeed || hashGameId(state.gameId);
+  state.tiles = generateMap(seed);
+  state.gridWidth = MAP_SIZE;
+  state.gridHeight = MAP_SIZE;
+  state.rngSeed = seed;
+}
+
 export function createSkirmish(mode: GameMode): InternalGameState {
   const gameId = randomUUID();
-  const rngSeed = gameId.split('').reduce((a, c) => a + c.charCodeAt(0), 0);
+  const rngSeed = hashGameId(gameId);
   const tiles = generateMap(rngSeed);
   const state: InternalGameState = {
     gameId,
@@ -878,7 +902,7 @@ export function fromDto(dto: GameStateDto): InternalGameState {
     tiles[`${tile.q},${tile.r}`] = tile.terrain as TerrainType;
   }
 
-  return {
+  const state: InternalGameState = {
     gameId: dto.gameId,
     mode: dto.mode as GameMode,
     gridWidth: dto.gridWidth,
@@ -890,7 +914,7 @@ export function fromDto(dto: GameStateDto): InternalGameState {
     winnerId: dto.winnerId,
     aiPlayerId: dto.aiPlayerId,
     connectedPlayers: [...dto.connectedPlayers],
-    rngSeed: dto.gameId.split('').reduce((a, c) => a + c.charCodeAt(0), 0),
+    rngSeed: hashGameId(dto.gameId),
     eventLog: dto.eventLog.map((e) => ({ ...e })),
     brigades: dto.brigades.map((b) => ({
       id: b.id,
@@ -915,4 +939,7 @@ export function fromDto(dto: GameStateDto): InternalGameState {
       },
     })),
   };
+
+  ensureMapGenerated(state);
+  return state;
 }

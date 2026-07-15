@@ -17,6 +17,7 @@ import type {
 } from './types/game';
 import { PLAYER_COLORS } from './types/game';
 import { computeVisibleHexes, buildTerrainMap, getVisionRange, isBrigadeVisible, isHexVisible } from './vision/fogOfWar';
+import { normalizeGameState } from './map/normalizeGameState';
 
 const app = document.querySelector<HTMLDivElement>('#app')!;
 
@@ -108,12 +109,12 @@ async function startGame(mode: GameMode, playerId: number): Promise<void> {
   try {
     const result = await gameClient.createGame(mode);
     gameId = result.gameId;
-    gameState = result.state;
+    gameState = applyGameState(result.state);
     localPlayerId = playerId;
 
     const join = await gameClient.joinGame(gameId, playerId);
     if (join.state) {
-      gameState = join.state;
+      gameState = applyGameState(join.state);
     }
 
     if (mode === 'Hotseat') {
@@ -133,7 +134,7 @@ async function startMultiplayerCreate(): Promise<void> {
     gameId = result.gameId;
     localPlayerId = 0;
     await gameClient.joinGame(gameId, 0);
-    gameState = result.state;
+    gameState = applyGameState(result.state);
     setMenuStatus(`Share this Game ID with Player 2: ${gameId}`);
     showGame();
   } catch (err) {
@@ -158,7 +159,7 @@ async function joinMultiplayer(): Promise<void> {
       setMenuStatus(join.error ?? 'Join failed');
       return;
     }
-    gameState = join.state!;
+    gameState = applyGameState(join.state!);
     showGame();
   } catch (err) {
     setMenuStatus(`Failed: ${String(err)}`);
@@ -177,7 +178,7 @@ function showGame(): void {
 
   gameClient.setStateHandler((state) => {
     processCombatEvents(state);
-    gameState = state;
+    gameState = applyGameState(state);
     updateUi();
   });
 
@@ -258,9 +259,13 @@ function startPopupAnimation(): void {
   popupAnimId = requestAnimationFrame(tick);
 }
 
+function applyGameState(state: GameStateDto): GameStateDto {
+  return normalizeGameState(state);
+}
+
 function getTerrainMap(): Map<string, string> {
   if (!gameState) return new Map();
-  return buildTerrainMap(gameState.tiles, gameState.gridWidth, gameState.gridHeight);
+  return buildTerrainMap(gameState.tiles, gameState.gridWidth, gameState.gridHeight, gameState.gameId);
 }
 
 function updateUi(): void {
@@ -662,7 +667,7 @@ async function sendCommand(command: GameCommandDto): Promise<void> {
   }
   if (result.state) {
     processCombatEvents(result.state);
-    gameState = result.state;
+    gameState = applyGameState(result.state);
     refreshRenderer();
   }
 }

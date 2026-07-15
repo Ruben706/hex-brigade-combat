@@ -1,6 +1,7 @@
 import { Client, TablesDB } from 'node-appwrite';
 import {
   createSkirmish,
+  ensureMapGenerated,
   executeCommand,
   runAiTurn,
   toDto,
@@ -31,7 +32,9 @@ async function loadState(
       tableId: TABLE_ID,
       rowId: gameId,
     });
-    return JSON.parse(row.state as string);
+    const state = JSON.parse(row.state as string) as import('./domain/gameDomain.js').InternalGameState;
+    ensureMapGenerated(state);
+    return state;
   } catch {
     return null;
   }
@@ -89,6 +92,7 @@ export default async function handler({ req, res, log, error }: {
       case 'createGame': {
         const mode = body.mode || 'Hotseat';
         const internal = createSkirmish(mode);
+        ensureMapGenerated(internal);
         await saveState(tablesDB, internal);
         const dto = toDto(internal);
         log(`Created game ${dto.gameId} mode=${mode}`);

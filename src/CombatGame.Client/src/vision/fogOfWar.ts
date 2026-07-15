@@ -1,5 +1,6 @@
 import { hexDistance, withinRange, type HexCoord } from '../render/HexRenderer';
 import type { BrigadeDto, TileDto } from '../types/game';
+import { generateTilesForGame } from '../map/proceduralMap';
 
 const VISION_BY_UNIT: Record<string, number> = {
   Scout: 5,
@@ -17,12 +18,20 @@ export function hexKey(q: number, r: number): string {
   return `${q},${r}`;
 }
 
-export function buildTerrainMap(tiles: TileDto[] | undefined, gridWidth: number, gridHeight: number): Map<string, string> {
+export function buildTerrainMap(
+  tiles: TileDto[] | undefined,
+  gridWidth: number,
+  gridHeight: number,
+  gameId?: string,
+): Map<string, string> {
   const map = new Map<string, string>();
-  if (tiles?.length) {
-    for (const tile of tiles) {
-      map.set(hexKey(tile.q, tile.r), tile.terrain);
-    }
+  const source = tiles?.length ? tiles : gameId ? generateTilesForGame(gameId) : [];
+
+  for (const tile of source) {
+    map.set(hexKey(tile.q, tile.r), tile.terrain);
+  }
+
+  if (map.size > 0) {
     return map;
   }
 

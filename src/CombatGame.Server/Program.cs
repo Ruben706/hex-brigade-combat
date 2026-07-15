@@ -1,3 +1,5 @@
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using CombatGame.Server.Hubs;
 using CombatGame.Server.Services;
 
@@ -5,7 +7,12 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddSingleton<AiController>();
 builder.Services.AddSingleton<GameSessionService>();
-builder.Services.AddSignalR();
+builder.Services.AddSignalR()
+    .AddJsonProtocol(options =>
+    {
+        options.PayloadSerializerOptions.PropertyNamingPolicy = JsonNamingPolicy.CamelCase;
+        options.PayloadSerializerOptions.DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull;
+    });
 builder.Services.AddCors(options =>
 {
     options.AddDefaultPolicy(policy =>
