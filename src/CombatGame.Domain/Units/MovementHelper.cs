@@ -141,16 +141,20 @@ public static class MovementHelper
         }
 
         var occupied = occupiedCoords.ToHashSet();
+        var costs = ComputePathCosts(start, movementRange, grid, occupied);
+        if (costs.TryGetValue(target, out cost))
+        {
+            return true;
+        }
 
-        // A direct adjacent step is always the cheapest way to an adjacent hex
-        // (any path ends by paying the target's terrain cost).
+        // First move may step onto an adjacent expensive tile even when it exceeds remaining MP.
         if (isFirstMove && IsFreeAdjacentStep(start, target, grid, occupied))
         {
             cost = TerrainHelper.GetMovementCost(grid.GetTerrain(target));
             return true;
         }
 
-        var costs = ComputePathCosts(start, movementRange, grid, occupied);
-        return costs.TryGetValue(target, out cost);
+        cost = 0;
+        return false;
     }
 }

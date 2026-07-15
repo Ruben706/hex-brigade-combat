@@ -1,6 +1,6 @@
 import type { HexCoord } from './gameDomain.js';
 
-export const DEFAULT_MAP_SIZE = 16;
+export const DEFAULT_MAP_SIZE = 25;
 
 /** q = column, r = row on a square tile grid. */
 

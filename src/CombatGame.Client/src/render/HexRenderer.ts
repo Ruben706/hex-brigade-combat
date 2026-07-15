@@ -47,8 +47,9 @@ function terrainMovementCost(terrain: string): number {
       return 1;
     case 'Forest':
     case 'ShallowWater':
-    case 'Hill':
       return 2;
+    case 'Hill':
+      return 3;
     default:
       return Number.MAX_SAFE_INTEGER;
   }

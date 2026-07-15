@@ -28,20 +28,21 @@ public static class DefaultSkirmishMap
 
         var player0Units = new (UnitType type, int col, int row)[]
         {
-            (UnitType.Scout, 1, 7),
-            (UnitType.Infantry, 2, 8),
-            (UnitType.Tank, 0, 6),
-            (UnitType.Artillery, 0, 9),
-            (UnitType.AntiTank, 1, 10)
+            (UnitType.Scout, 1, 11),
+            (UnitType.Infantry, 2, 12),
+            (UnitType.Tank, 0, 10),
+            (UnitType.Artillery, 0, 13),
+            (UnitType.AntiTank, 1, 14)
         };
 
+        var right = Width - 1;
         var player1Units = new (UnitType type, int col, int row)[]
         {
-            (UnitType.Scout, 14, 7),
-            (UnitType.Infantry, 13, 8),
-            (UnitType.Tank, 15, 6),
-            (UnitType.Artillery, 15, 9),
-            (UnitType.AntiTank, 14, 10)
+            (UnitType.Scout, right - 1, 11),
+            (UnitType.Infantry, right - 2, 12),
+            (UnitType.Tank, right, 10),
+            (UnitType.Artillery, right, 13),
+            (UnitType.AntiTank, right - 1, 14)
         };
 
         foreach (var (type, col, row) in player0Units)

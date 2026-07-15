@@ -501,13 +501,18 @@ function tryGetMovementCost(
 ): number | null {
   if (start.q === target.q && start.r === target.r) return null;
 
-  // A direct adjacent step is always the cheapest way to an adjacent hex.
+  const costs = computePathCosts(start, range, gridW, gridH, occupied, tiles);
+  const pathCost = costs.get(hexKey(target));
+  if (pathCost !== undefined) {
+    return pathCost;
+  }
+
+  // First move may step onto an adjacent expensive tile even when it exceeds remaining MP.
   if (isFirstMove && isFreeAdjacentStep(start, target, gridW, gridH, occupied, tiles)) {
     return getMovementCost(getTerrain(tiles, target.q, target.r));
   }
 
-  const costs = computePathCosts(start, range, gridW, gridH, occupied, tiles);
-  return costs.get(hexKey(target)) ?? null;
+  return null;
 }
 
 // --- Combat ---
@@ -644,18 +649,18 @@ export function hashGameId(gameId: string): number {
 
 const PLAYER_SPAWNS: Record<number, HexCoord[]> = {
   0: [
-    { q: 1, r: 7 },
-    { q: 2, r: 8 },
-    { q: 0, r: 6 },
-    { q: 0, r: 9 },
-    { q: 1, r: 10 },
+    { q: 1, r: 11 },
+    { q: 2, r: 12 },
+    { q: 0, r: 10 },
+    { q: 0, r: 13 },
+    { q: 1, r: 14 },
   ],
   1: [
-    { q: 14, r: 7 },
-    { q: 13, r: 8 },
-    { q: 15, r: 6 },
-    { q: 15, r: 9 },
-    { q: 14, r: 10 },
+    { q: MAP_SIZE - 2, r: 11 },
+    { q: MAP_SIZE - 3, r: 12 },
+    { q: MAP_SIZE - 1, r: 10 },
+    { q: MAP_SIZE - 1, r: 13 },
+    { q: MAP_SIZE - 2, r: 14 },
   ],
 };
 
@@ -800,12 +805,12 @@ export function createSkirmish(mode: GameMode): InternalGameState {
   };
 
   const p0: Array<[UnitType, HexCoord]> = [
-    ['Scout', { q: 1, r: 7 }], ['Infantry', { q: 2, r: 8 }],
-    ['Tank', { q: 0, r: 6 }], ['Artillery', { q: 0, r: 9 }], ['AntiTank', { q: 1, r: 10 }],
+    ['Scout', { q: 1, r: 11 }], ['Infantry', { q: 2, r: 12 }],
+    ['Tank', { q: 0, r: 10 }], ['Artillery', { q: 0, r: 13 }], ['AntiTank', { q: 1, r: 14 }],
   ];
   const p1: Array<[UnitType, HexCoord]> = [
-    ['Scout', { q: 14, r: 7 }], ['Infantry', { q: 13, r: 8 }],
-    ['Tank', { q: 15, r: 6 }], ['Artillery', { q: 15, r: 9 }], ['AntiTank', { q: 14, r: 10 }],
+    ['Scout', { q: MAP_SIZE - 2, r: 11 }], ['Infantry', { q: MAP_SIZE - 3, r: 12 }],
+    ['Tank', { q: MAP_SIZE - 1, r: 10 }], ['Artillery', { q: MAP_SIZE - 1, r: 13 }], ['AntiTank', { q: MAP_SIZE - 2, r: 14 }],
   ];
   for (const [t, pos] of p0) state.brigades.push(createBrigade(t, 0, pos));
   for (const [t, pos] of p1) state.brigades.push(createBrigade(t, 1, pos));
@@ -841,7 +846,7 @@ function execMove(state: InternalGameState, cmd: GameCommand): CommandResult {
 
   syncGridDimensions(state);
   const t = cmd.targetCoord;
-  if (!isOnOffsetGrid(t.q, t.r, MAP_SIZE, MAP_SIZE)) {
+  if (!isOnOffsetGrid(t.q, t.r, state.gridWidth, state.gridHeight)) {
     return { success: false, error: 'Target is outside the map.' };
   }
 
@@ -850,8 +855,8 @@ function execMove(state: InternalGameState, cmd: GameCommand): CommandResult {
     b.position,
     t,
     b.turnState.movementPointsRemaining,
-    MAP_SIZE,
-    MAP_SIZE,
+    state.gridWidth,
+    state.gridHeight,
     occupied,
     state.tiles,
     !b.turnState.hasMoved,

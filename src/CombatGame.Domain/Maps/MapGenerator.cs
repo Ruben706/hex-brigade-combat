@@ -4,7 +4,7 @@ namespace CombatGame.Domain.Maps;
 
 public static class MapGenerator
 {
-    public const int MapSize = 16;
+    public const int MapSize = 25;
 
     public static HexGrid Generate(Random rng)
     {
@@ -15,13 +15,13 @@ public static class MapGenerator
             tile.Terrain = TerrainType.Plains;
         }
 
-        PaintBlob(grid, HexOffset.FromOddR(8, 8), TerrainType.Mountain, 2, rng, 0.65);
-        PaintBlob(grid, HexOffset.FromOddR(7, 5), TerrainType.Mountain, 2, rng, 0.55);
-        PaintBlob(grid, HexOffset.FromOddR(9, 11), TerrainType.Mountain, 1, rng, 0.7);
+        PaintBlob(grid, HexOffset.FromOddR(12, 12), TerrainType.Mountain, 3, rng, 0.65);
+        PaintBlob(grid, HexOffset.FromOddR(10, 8), TerrainType.Mountain, 2, rng, 0.55);
+        PaintBlob(grid, HexOffset.FromOddR(14, 16), TerrainType.Mountain, 2, rng, 0.7);
 
-        for (var i = 0; i < 6; i++)
+        for (var i = 0; i < 10; i++)
         {
-            var center = RandomCoord(rng, 4, 11);
+            var center = RandomCoord(rng, 6, MapSize - 7);
             PaintBlob(grid, center, TerrainType.DeepWater, rng.Next(1, 3), rng, 0.45);
         }
 
@@ -47,12 +47,12 @@ public static class MapGenerator
             }
         }
 
-        for (var i = 0; i < 14; i++)
+        for (var i = 0; i < 28; i++)
         {
             PaintBlob(grid, RandomCoord(rng, 0, MapSize - 1), TerrainType.Forest, rng.Next(1, 3), rng, 0.5);
         }
 
-        for (var i = 0; i < 10; i++)
+        for (var i = 0; i < 20; i++)
         {
             PaintBlob(grid, RandomCoord(rng, 0, MapSize - 1), TerrainType.Hill, rng.Next(1, 2), rng, 0.55);
         }
@@ -71,8 +71,8 @@ public static class MapGenerator
 
     private static void EnsureSpawnZones(HexGrid grid)
     {
-        ClearRect(grid, 0, 2, 4, 12);
-        ClearRect(grid, MapSize - 3, MapSize - 1, 4, 12);
+        ClearRect(grid, 0, 2, 4, MapSize - 6);
+        ClearRect(grid, MapSize - 3, MapSize - 1, 4, MapSize - 6);
     }
 
     private static void ClearRect(HexGrid grid, int colMin, int colMax, int rowMin, int rowMax)
@@ -132,6 +132,6 @@ public static class MapGenerator
     private static bool IsInSpawnZone(HexCoord coord)
     {
         var (col, row) = HexOffset.ToOddR(coord);
-        return (col <= 2 || col >= MapSize - 3) && row is >= 4 and <= 12;
+        return (col <= 2 || col >= MapSize - 3) && row is >= 4 and <= MapSize - 6;
     }
 }

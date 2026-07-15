@@ -467,12 +467,12 @@ public class TerrainTests
     }
 
     [Fact]
-    public void Map_IsGeneratedAt16x16()
+    public void Map_IsGeneratedAt25x25()
     {
         var state = DefaultSkirmishMap.Create(GameMode.Hotseat);
 
-        Assert.Equal(16, state.Grid.Width);
-        Assert.Equal(16, state.Grid.Height);
+        Assert.Equal(MapGenerator.MapSize, state.Grid.Width);
+        Assert.Equal(MapGenerator.MapSize, state.Grid.Height);
     }
     [Fact]
     public void CanMove_ToFirstColumn()
@@ -501,13 +501,82 @@ public class TerrainTests
     public void OffsetGrid_IncludesMapCornerTiles()
     {
         var state = DefaultSkirmishMap.Create(GameMode.Hotseat);
+        var last = MapGenerator.MapSize - 1;
 
-        Assert.True(state.Grid.Contains(new HexCoord(0, 15)));
-        Assert.True(state.Grid.Contains(new HexCoord(15, 0)));
+        Assert.True(state.Grid.Contains(new HexCoord(0, last)));
+        Assert.True(state.Grid.Contains(new HexCoord(last, 0)));
         Assert.True(state.Grid.Contains(new HexCoord(0, 0)));
-        Assert.True(state.Grid.Contains(new HexCoord(15, 15)));
+        Assert.True(state.Grid.Contains(new HexCoord(last, last)));
         Assert.False(state.Grid.Contains(new HexCoord(-1, 7)));
-        Assert.False(state.Grid.Contains(new HexCoord(16, 7)));
+        Assert.False(state.Grid.Contains(new HexCoord(MapGenerator.MapSize, 7)));
+    }
+
+    [Fact]
+    public void CanMove_ToTile12_5()
+    {
+        var state = DefaultSkirmishMap.Create(GameMode.Hotseat);
+        var tank = state.Brigades.First(b => b.UnitType == UnitType.Tank && b.PlayerId == 0);
+        var start = new HexCoord(10, 5);
+        var target = new HexCoord(12, 5);
+        tank.Position = start;
+        TestMapHelper.SetPlains(state, start, target, new HexCoord(11, 5));
+
+        var result = GameEngine.Execute(state, new GameCommand
+        {
+            Type = CommandType.Move,
+            PlayerId = 0,
+            BrigadeId = tank.Id,
+            TargetCoord = target
+        });
+
+        Assert.True(result.Success);
+        Assert.Equal(target, tank.Position);
+    }
+
+    [Fact]
+    public void MoveOntoForest_SubtractsTwoMovementPoints()
+    {
+        var state = DefaultSkirmishMap.Create(GameMode.Hotseat);
+        var tank = state.Brigades.First(b => b.UnitType == UnitType.Tank && b.PlayerId == 0);
+        var start = new HexCoord(5, 7);
+        var forest = new HexCoord(6, 7);
+        tank.Position = start;
+        state.Grid.SetTerrain(forest, TerrainType.Forest);
+
+        var result = GameEngine.Execute(state, new GameCommand
+        {
+            Type = CommandType.Move,
+            PlayerId = 0,
+            BrigadeId = tank.Id,
+            TargetCoord = forest
+        });
+
+        Assert.True(result.Success);
+        Assert.Equal(forest, tank.Position);
+        Assert.Equal(2, tank.TurnState.MovementPointsRemaining);
+    }
+
+    [Fact]
+    public void MoveOntoHill_SubtractsThreeMovementPoints()
+    {
+        var state = DefaultSkirmishMap.Create(GameMode.Hotseat);
+        var tank = state.Brigades.First(b => b.UnitType == UnitType.Tank && b.PlayerId == 0);
+        var start = new HexCoord(5, 7);
+        var hill = new HexCoord(6, 7);
+        tank.Position = start;
+        state.Grid.SetTerrain(hill, TerrainType.Hill);
+
+        var result = GameEngine.Execute(state, new GameCommand
+        {
+            Type = CommandType.Move,
+            PlayerId = 0,
+            BrigadeId = tank.Id,
+            TargetCoord = hill
+        });
+
+        Assert.True(result.Success);
+        Assert.Equal(hill, tank.Position);
+        Assert.Equal(1, tank.TurnState.MovementPointsRemaining);
     }
 
     [Fact]
@@ -517,7 +586,7 @@ public class TerrainTests
         var artillery = state.Brigades.First(b => b.UnitType == UnitType.Artillery && b.PlayerId == 0);
         artillery.Position = new HexCoord(5, 7);
         var target = new HexCoord(6, 7);
-        state.Grid.SetTerrain(target, TerrainType.Hill); // cost 2, artillery has 1 MP
+        state.Grid.SetTerrain(target, TerrainType.Hill); // cost 3, artillery has 1 MP
 
         var result = GameEngine.Execute(state, new GameCommand
         {
@@ -643,10 +712,11 @@ public class TerrainTests
     {
         var state = DefaultSkirmishMap.Create(GameMode.Hotseat);
         var tank = state.Brigades.First(b => b.UnitType == UnitType.Tank && b.PlayerId == 0);
-        var start = HexOffset.FromOddR(2, 14);
-        var target = HexOffset.FromOddR(0, 15);
+        var last = MapGenerator.MapSize - 1;
+        var start = HexOffset.FromOddR(2, last - 1);
+        var target = HexOffset.FromOddR(0, last);
         tank.Position = start;
-        TestMapHelper.SetPlains(state, start, target, HexOffset.FromOddR(1, 15), HexOffset.FromOddR(1, 14));
+        TestMapHelper.SetPlains(state, start, target, HexOffset.FromOddR(1, last), HexOffset.FromOddR(1, last - 1));
 
         var result = GameEngine.Execute(state, new GameCommand
         {
@@ -665,10 +735,11 @@ public class TerrainTests
     {
         var state = DefaultSkirmishMap.Create(GameMode.Hotseat);
         var tank = state.Brigades.First(b => b.UnitType == UnitType.Tank && b.PlayerId == 0);
-        var start = HexOffset.FromOddR(13, 1);
-        var target = HexOffset.FromOddR(15, 0);
+        var last = MapGenerator.MapSize - 1;
+        var start = HexOffset.FromOddR(last - 2, 1);
+        var target = HexOffset.FromOddR(last, 0);
         tank.Position = start;
-        TestMapHelper.SetPlains(state, start, target, HexOffset.FromOddR(14, 0), HexOffset.FromOddR(14, 1));
+        TestMapHelper.SetPlains(state, start, target, HexOffset.FromOddR(last - 1, 0), HexOffset.FromOddR(last - 1, 1));
 
         var result = GameEngine.Execute(state, new GameCommand
         {

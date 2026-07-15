@@ -1,9 +1,9 @@
 import type { HexCoord } from './gameDomain.js';
 import { hexKey } from './gameDomain.js';
 import type { TileMap, TerrainType } from './terrain.js';
-import { isOnOffsetGrid, offsetNeighbor, offsetWithinRange, orthogonalNeighbors, manhattanDistance } from './hexOffset.js';
+import { isOnOffsetGrid, offsetNeighbor, offsetWithinRange } from './hexOffset.js';
 
-export const MAP_SIZE = 16;
+export const MAP_SIZE = 25;
 
 class SeededRng {
   private state: number;
@@ -23,7 +23,7 @@ class SeededRng {
 }
 
 function isInSpawnZone(hex: HexCoord): boolean {
-  return (hex.q <= 2 || hex.q >= MAP_SIZE - 3) && hex.r >= 4 && hex.r <= 12;
+  return (hex.q <= 2 || hex.q >= MAP_SIZE - 3) && hex.r >= 4 && hex.r <= MAP_SIZE - 6;
 }
 
 function isOnGrid(hex: HexCoord): boolean {
@@ -84,12 +84,12 @@ export function generateMap(seed: number): TileMap {
     }
   }
 
-  paintBlob(tiles, { q: 8, r: 8 }, 'Mountain', 2, rng, 0.65);
-  paintBlob(tiles, { q: 7, r: 5 }, 'Mountain', 2, rng, 0.55);
-  paintBlob(tiles, { q: 9, r: 11 }, 'Mountain', 1, rng, 0.7);
+  paintBlob(tiles, { q: 12, r: 12 }, 'Mountain', 3, rng, 0.65);
+  paintBlob(tiles, { q: 10, r: 8 }, 'Mountain', 2, rng, 0.55);
+  paintBlob(tiles, { q: 14, r: 16 }, 'Mountain', 2, rng, 0.7);
 
-  for (let i = 0; i < 6; i++) {
-    paintBlob(tiles, randomCoord(rng, 4, 11), 'DeepWater', rng.nextInt(1, 2), rng, 0.45);
+  for (let i = 0; i < 10; i++) {
+    paintBlob(tiles, randomCoord(rng, 6, MAP_SIZE - 7), 'DeepWater', rng.nextInt(1, 2), rng, 0.45);
   }
 
   for (const key of Object.keys(tiles)) {
@@ -105,15 +105,15 @@ export function generateMap(seed: number): TileMap {
     }
   }
 
-  for (let i = 0; i < 14; i++) {
+  for (let i = 0; i < 28; i++) {
     paintBlob(tiles, randomCoord(rng, 0, MAP_SIZE - 1), 'Forest', rng.nextInt(1, 2), rng, 0.5);
   }
 
-  for (let i = 0; i < 10; i++) {
+  for (let i = 0; i < 20; i++) {
     paintBlob(tiles, randomCoord(rng, 0, MAP_SIZE - 1), 'Hill', 1, rng, 0.55);
   }
 
-  clearRect(tiles, 0, 2, 4, 12);
-  clearRect(tiles, MAP_SIZE - 3, MAP_SIZE - 1, 4, 12);
+  clearRect(tiles, 0, 2, 4, MAP_SIZE - 6);
+  clearRect(tiles, MAP_SIZE - 3, MAP_SIZE - 1, 4, MAP_SIZE - 6);
   return tiles;
 }

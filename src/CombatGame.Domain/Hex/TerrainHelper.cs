@@ -10,7 +10,7 @@ public static class TerrainHelper
         TerrainType.Plains => 1,
         TerrainType.Forest => 2,
         TerrainType.ShallowWater => 2,
-        TerrainType.Hill => 2,
+        TerrainType.Hill => 3,
         _ => int.MaxValue
     };
 
