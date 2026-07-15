@@ -1,18 +1,13 @@
-import { Client, Functions, Realtime, ExecutionMethod } from 'appwrite';
+import { Functions, Realtime, ExecutionMethod } from 'appwrite';
+import { client } from '../lib/appwrite';
 import type { GameCommandDto, GameMode, GameStateDto } from '../types/game';
 
-const endpoint = import.meta.env.VITE_APPWRITE_ENDPOINT || '';
-const projectId = import.meta.env.VITE_APPWRITE_PROJECT_ID || '';
 const functionId = import.meta.env.VITE_APPWRITE_FUNCTION_ID || '';
 const databaseId = import.meta.env.VITE_APPWRITE_DATABASE_ID || 'combat';
 const collectionId = import.meta.env.VITE_APPWRITE_GAMES_COLLECTION_ID || 'games';
 
-function getClient(): Client {
-  return new Client().setEndpoint(endpoint).setProject(projectId);
-}
-
 async function invoke<T>(body: Record<string, unknown>): Promise<T> {
-  const functions = new Functions(getClient());
+  const functions = new Functions(client);
   const execution = await functions.createExecution(
     functionId,
     JSON.stringify(body),
@@ -46,7 +41,7 @@ export class AppwriteGameClient {
       await this.subscription.unsubscribe();
     }
 
-    const realtime = new Realtime(getClient());
+    const realtime = new Realtime(client);
     const channel = `databases.${databaseId}.collections.${collectionId}.documents.${gameId}`;
 
     this.subscription = await realtime.subscribe(channel, (event) => {
@@ -110,5 +105,5 @@ export class AppwriteGameClient {
 export const appwriteGameClient = new AppwriteGameClient();
 
 export function isAppwriteConfigured(): boolean {
-  return Boolean(endpoint && projectId && functionId);
+  return Boolean(functionId);
 }

@@ -1,4 +1,5 @@
 import './style.css';
+import { pingAppwriteBackend } from './lib/appwrite';
 import { gameClient, getBackendName } from './net/index';
 import {
   getReachableHexes,
@@ -605,3 +606,11 @@ function setMenuStatus(msg: string): void {
 }
 
 renderApp();
+
+void pingAppwriteBackend().then((ok) => {
+  if (ok) {
+    setMenuStatus('Appwrite backend connected.');
+  } else {
+    setMenuStatus('Appwrite ping failed — check console and platform settings.');
+  }
+});
