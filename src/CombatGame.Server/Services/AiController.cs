@@ -157,7 +157,7 @@ public sealed class AiController
 
         var reachable = MovementHelper.GetReachableHexes(
             brigade.Position,
-            1,
+            brigade.TurnState.MovementPointsRemaining,
             state.Grid,
             state.Brigades.Where(b => b.Id != brigade.Id).Select(b => b.Position));
 

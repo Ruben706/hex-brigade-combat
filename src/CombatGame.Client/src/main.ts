@@ -295,7 +295,7 @@ function computeHighlights(): { moveHexes: HexCoord[]; attackHexes: HexCoord[] }
     moveHexes.push(
       ...getReachableHexes(
         { q: brigade.q, r: brigade.r },
-        1,
+        brigade.movementPointsRemaining,
         gameState.gridWidth,
         gameState.gridHeight,
         occupied,

@@ -59,19 +59,15 @@ public static class GameEngine
             return CommandResult.Fail("Target is outside the map.");
         }
 
-        if (brigade.Position.DistanceTo(target) != 1)
-        {
-            return CommandResult.Fail("Move one hex at a time.");
-        }
-
-        if (!MovementHelper.CanReach(
+        if (!MovementHelper.TryGetMovementCost(
                 brigade.Position,
                 target,
-                1,
+                brigade.TurnState.MovementPointsRemaining,
                 state.Grid,
-                state.Brigades.Where(b => b.Id != brigade.Id).Select(b => b.Position)))
+                state.Brigades.Where(b => b.Id != brigade.Id).Select(b => b.Position),
+                out var moveCost))
         {
-            return CommandResult.Fail("Target is not a valid adjacent hex.");
+            return CommandResult.Fail("Target is out of movement range.");
         }
 
         if (state.GetBrigadeAt(target) is not null)
@@ -82,7 +78,7 @@ public static class GameEngine
         TurnManager.ClearMovementStatuses(brigade);
         brigade.Position = target;
         brigade.TurnState.HasMoved = true;
-        brigade.TurnState.MovementPointsRemaining--;
+        brigade.TurnState.MovementPointsRemaining -= moveCost;
         state.AddEvent(GameEventType.Moved,
             $"Player {brigade.PlayerId}'s {brigade.UnitType} moved to ({target.Q},{target.R}).");
         return CommandResult.Ok();

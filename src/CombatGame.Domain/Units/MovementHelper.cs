@@ -72,5 +72,60 @@ public static class MovementHelper
         int movementRange,
         HexGrid grid,
         IEnumerable<HexCoord> occupiedCoords) =>
-        GetReachableHexes(start, movementRange, grid, occupiedCoords).Contains(target);
+        TryGetMovementCost(start, target, movementRange, grid, occupiedCoords, out _);
+
+    public static bool TryGetMovementCost(
+        HexCoord start,
+        HexCoord target,
+        int movementRange,
+        HexGrid grid,
+        IEnumerable<HexCoord> occupiedCoords,
+        out int cost)
+    {
+        cost = 0;
+        if (start == target)
+        {
+            return false;
+        }
+
+        var occupied = occupiedCoords.ToHashSet();
+        var visited = new Dictionary<HexCoord, int> { [start] = 0 };
+        var queue = new Queue<(HexCoord coord, int pathCost)>();
+        queue.Enqueue((start, 0));
+
+        while (queue.Count > 0)
+        {
+            var (current, pathCost) = queue.Dequeue();
+            if (pathCost >= movementRange)
+            {
+                continue;
+            }
+
+            for (var i = 0; i < 6; i++)
+            {
+                var neighbor = current.Neighbor(i);
+                if (!grid.Contains(neighbor) || occupied.Contains(neighbor))
+                {
+                    continue;
+                }
+
+                var nextCost = pathCost + 1;
+                if (visited.TryGetValue(neighbor, out var knownCost) && knownCost <= nextCost)
+                {
+                    continue;
+                }
+
+                visited[neighbor] = nextCost;
+                queue.Enqueue((neighbor, nextCost));
+            }
+        }
+
+        if (!visited.TryGetValue(target, out cost) || cost <= 0)
+        {
+            cost = 0;
+            return false;
+        }
+
+        return true;
+    }
 }

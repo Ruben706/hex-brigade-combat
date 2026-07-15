@@ -341,6 +341,40 @@ function getReachableHexes(start: HexCoord, range: number, gridW: number, gridH:
   return reachable;
 }
 
+function tryGetMovementCost(
+  start: HexCoord,
+  target: HexCoord,
+  range: number,
+  gridW: number,
+  gridH: number,
+  occupied: Set<string>,
+): number | null {
+  if (start.q === target.q && start.r === target.r) return null;
+
+  const visited = new Map<string, number>([[hexKey(start), 0]]);
+  const queue: Array<{ c: HexCoord; cost: number }> = [{ c: start, cost: 0 }];
+
+  while (queue.length > 0) {
+    const { c, cost } = queue.shift()!;
+    if (cost >= range) continue;
+
+    for (let i = 0; i < 6; i++) {
+      const n = hexNeighbor(c, i);
+      if (n.q < 0 || n.r < 0 || n.q >= gridW || n.r >= gridH) continue;
+      const key = hexKey(n);
+      if (occupied.has(key)) continue;
+      const next = cost + 1;
+      const known = visited.get(key);
+      if (known !== undefined && known <= next) continue;
+      visited.set(key, next);
+      queue.push({ c: n, cost: next });
+    }
+  }
+
+  const cost = visited.get(hexKey(target));
+  return cost !== undefined && cost > 0 ? cost : null;
+}
+
 // --- Combat ---
 
 const EFFECTIVENESS: Record<string, number> = {
@@ -522,21 +556,24 @@ function execMove(state: InternalGameState, cmd: GameCommand): CommandResult {
     return { success: false, error: 'Target is outside the map.' };
   }
 
-  if (hexDistance(b.position, t) !== 1) {
-    return { success: false, error: 'Move one hex at a time.' };
-  }
-
   const occupied = new Set(state.brigades.filter((br) => br.id !== b.id).map((br) => hexKey(br.position)));
-  const reachable = getReachableHexes(b.position, 1, state.gridWidth, state.gridHeight, occupied);
-  if (!reachable.some((h) => h.q === t.q && h.r === t.r)) {
-    return { success: false, error: 'Target is not a valid adjacent hex.' };
+  const moveCost = tryGetMovementCost(
+    b.position,
+    t,
+    b.turnState.movementPointsRemaining,
+    state.gridWidth,
+    state.gridHeight,
+    occupied,
+  );
+  if (moveCost === null) {
+    return { success: false, error: 'Target is out of movement range.' };
   }
   if (getBrigadeAt(state, t)) return { success: false, error: 'Target hex is occupied.' };
 
   clearMovementStatuses(b);
   b.position = t;
   b.turnState.hasMoved = true;
-  b.turnState.movementPointsRemaining--;
+  b.turnState.movementPointsRemaining -= moveCost;
   addEvent(state, 'Moved', `Player ${b.playerId}'s ${b.unitType} moved to (${t.q},${t.r}).`);
   return { success: true };
 }
@@ -682,7 +719,13 @@ function tryMoveTowardEnemy(state: InternalGameState, b: Brigade, ai: number): b
     hexDistance(b.position, e.position) < hexDistance(b.position, a.position) ? e : a);
 
   const occupied = new Set(state.brigades.filter((br) => br.id !== b.id).map((br) => hexKey(br.position)));
-  const reachable = getReachableHexes(b.position, 1, state.gridWidth, state.gridHeight, occupied);
+  const reachable = getReachableHexes(
+    b.position,
+    b.turnState.movementPointsRemaining,
+    state.gridWidth,
+    state.gridHeight,
+    occupied,
+  );
 
   let best: HexCoord | null = null;
   let bestDist = hexDistance(b.position, nearest.position);
