@@ -1,15 +1,25 @@
 import { Functions, Realtime, ExecutionMethod } from 'appwrite';
-import { client } from '../lib/appwrite';
+import {
+  APPWRITE_FUNCTION_ID,
+  APPWRITE_DATABASE_ID,
+  APPWRITE_GAMES_COLLECTION_ID,
+  client,
+} from '../lib/appwrite';
 import type { GameCommandDto, GameMode, GameStateDto } from '../types/game';
 
-const functionId = import.meta.env.VITE_APPWRITE_FUNCTION_ID || '';
-const databaseId = import.meta.env.VITE_APPWRITE_DATABASE_ID || 'combat';
-const collectionId = import.meta.env.VITE_APPWRITE_GAMES_COLLECTION_ID || 'games';
+function ensureFunctionConfigured(): void {
+  if (!APPWRITE_FUNCTION_ID) {
+    throw new Error(
+      'Appwrite game function is not configured. Deploy appwrite/functions/game-api, copy the function ID into src/lib/appwrite.ts (APPWRITE_FUNCTION_ID), then rebuild.',
+    );
+  }
+}
 
 async function invoke<T>(body: Record<string, unknown>): Promise<T> {
+  ensureFunctionConfigured();
   const functions = new Functions(client);
   const execution = await functions.createExecution(
-    functionId,
+    APPWRITE_FUNCTION_ID,
     JSON.stringify(body),
     false,
     '/',
@@ -42,7 +52,7 @@ export class AppwriteGameClient {
     }
 
     const realtime = new Realtime(client);
-    const channel = `databases.${databaseId}.collections.${collectionId}.documents.${gameId}`;
+    const channel = `databases.${APPWRITE_DATABASE_ID}.collections.${APPWRITE_GAMES_COLLECTION_ID}.documents.${gameId}`;
 
     this.subscription = await realtime.subscribe(channel, (event) => {
       if (event.events.some((e) => e.includes('.update') || e.includes('.create'))) {
@@ -103,7 +113,3 @@ export class AppwriteGameClient {
 }
 
 export const appwriteGameClient = new AppwriteGameClient();
-
-export function isAppwriteConfigured(): boolean {
-  return Boolean(functionId);
-}

@@ -1,6 +1,6 @@
 import './style.css';
 import { pingAppwriteBackend } from './lib/appwrite';
-import { gameClient, getBackendName } from './net/index';
+import { gameClient, getBackendName, getBackendSetupHint } from './net/index';
 import {
   getReachableHexes,
   HexRenderer,
@@ -608,9 +608,12 @@ function setMenuStatus(msg: string): void {
 renderApp();
 
 void pingAppwriteBackend().then((ok) => {
-  if (ok) {
+  const hint = getBackendSetupHint();
+  if (ok && hint) {
+    setMenuStatus(`Appwrite connected. ${hint}`);
+  } else if (ok) {
     setMenuStatus('Appwrite backend connected.');
   } else {
-    setMenuStatus('Appwrite ping failed — check console and platform settings.');
+    setMenuStatus('Appwrite ping failed — add localhost and ruben706.github.io as Web platforms in Appwrite Console.');
   }
 });

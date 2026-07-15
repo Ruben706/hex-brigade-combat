@@ -4,6 +4,16 @@ export const APPWRITE_ENDPOINT = 'https://fra.cloud.appwrite.io/v1';
 export const APPWRITE_PROJECT_ID = '6a574b63000d15c7e337';
 export const APPWRITE_PROJECT_NAME = 'Test project';
 
+/** Set this after deploying the game-api function (Appwrite Console → Functions). */
+export const APPWRITE_FUNCTION_ID =
+  import.meta.env.VITE_APPWRITE_FUNCTION_ID || '';
+
+export const APPWRITE_DATABASE_ID =
+  import.meta.env.VITE_APPWRITE_DATABASE_ID || 'combat';
+
+export const APPWRITE_GAMES_COLLECTION_ID =
+  import.meta.env.VITE_APPWRITE_GAMES_COLLECTION_ID || 'games';
+
 const client = new Client()
   .setEndpoint(APPWRITE_ENDPOINT)
   .setProject(APPWRITE_PROJECT_ID);
