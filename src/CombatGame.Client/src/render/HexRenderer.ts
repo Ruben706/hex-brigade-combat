@@ -1,5 +1,6 @@
 import type { BrigadeDto, GameStateDto } from '../types/game';
 import { PLAYER_COLORS, UNIT_LABELS } from '../types/game';
+import { isBrigadeVisible, isHexVisible } from '../vision/fogOfWar';
 
 export interface HexCoord {
   q: number;
@@ -11,6 +12,8 @@ export interface RenderOptions {
   highlightHexes: HexCoord[];
   attackHexes: HexCoord[];
   rangeHexes: HexCoord[];
+  visibleHexes: Set<string> | null;
+  viewingPlayerId: number;
   damagePopups: DamagePopup[];
 }
 
@@ -128,28 +131,56 @@ export class HexRenderer {
     this.ctx.clearRect(0, 0, this.width, this.height);
     this.syncLayout(state.gridWidth, state.gridHeight);
 
+    const fogEnabled = options.visibleHexes !== null;
+
     for (let r = 0; r < state.gridHeight; r++) {
       for (let q = 0; q < state.gridWidth; q++) {
-        const isMove = options.highlightHexes.some((h) => h.q === q && h.r === r);
-        const isAttack = options.attackHexes.some((h) => h.q === q && h.r === r);
-        this.drawHex(q, r, '#1e2a3a', isMove ? '#3d6b4f' : isAttack ? '#6b3d3d' : '#2a3d52');
+        const hex = { q, r };
+        const visible = !fogEnabled || isHexVisible(options.visibleHexes!, hex);
+        const isMove = visible && options.highlightHexes.some((h) => h.q === q && h.r === r);
+        const isAttack = visible && options.attackHexes.some((h) => h.q === q && h.r === r);
+        this.drawHex(
+          q,
+          r,
+          '#1e2a3a',
+          visible ? (isMove ? '#3d6b4f' : isAttack ? '#6b3d3d' : '#2a3d52') : '#141a22',
+          visible ? '#2a3d52' : '#0f1419',
+        );
+      }
+    }
+
+    if (fogEnabled) {
+      for (let r = 0; r < state.gridHeight; r++) {
+        for (let q = 0; q < state.gridWidth; q++) {
+          if (!isHexVisible(options.visibleHexes!, { q, r })) {
+            this.drawHexFogOverlay(q, r);
+          }
+        }
       }
     }
 
     for (const hex of options.rangeHexes) {
-      this.drawHexOutline(hex.q, hex.r, '#ffd166', 3);
+      if (!fogEnabled || isHexVisible(options.visibleHexes!, hex)) {
+        this.drawHexOutline(hex.q, hex.r, '#ffd166', 3);
+      }
     }
 
     for (const brigade of state.brigades) {
-      this.drawBrigade(brigade, brigade.id === options.selectedBrigadeId);
+      if (
+        isBrigadeVisible(brigade, options.viewingPlayerId, options.visibleHexes ?? new Set())
+      ) {
+        this.drawBrigade(brigade, brigade.id === options.selectedBrigadeId);
+      }
     }
 
     for (const popup of options.damagePopups) {
-      this.drawDamagePopup(popup);
+      if (!fogEnabled || isHexVisible(options.visibleHexes!, { q: popup.q, r: popup.r })) {
+        this.drawDamagePopup(popup);
+      }
     }
   }
 
-  private drawHex(q: number, r: number, stroke: string, fill: string): void {
+  private drawHex(q: number, r: number, stroke: string, fill: string, strokeOverride?: string): void {
     const { x, y } = this.hexToPixel(q, r);
     this.ctx.beginPath();
     for (let i = 0; i < 6; i++) {
@@ -165,9 +196,27 @@ export class HexRenderer {
     this.ctx.closePath();
     this.ctx.fillStyle = fill;
     this.ctx.fill();
-    this.ctx.strokeStyle = stroke;
+    this.ctx.strokeStyle = strokeOverride ?? stroke;
     this.ctx.lineWidth = 1.5;
     this.ctx.stroke();
+  }
+
+  private drawHexFogOverlay(q: number, r: number): void {
+    const { x, y } = this.hexToPixel(q, r);
+    this.ctx.beginPath();
+    for (let i = 0; i < 6; i++) {
+      const angle = (Math.PI / 180) * (60 * i - 30);
+      const hx = x + HEX_SIZE * Math.cos(angle);
+      const hy = y + HEX_SIZE * Math.sin(angle);
+      if (i === 0) {
+        this.ctx.moveTo(hx, hy);
+      } else {
+        this.ctx.lineTo(hx, hy);
+      }
+    }
+    this.ctx.closePath();
+    this.ctx.fillStyle = 'rgba(5, 8, 12, 0.72)';
+    this.ctx.fill();
   }
 
   private drawHexOutline(q: number, r: number, stroke: string, lineWidth: number): void {

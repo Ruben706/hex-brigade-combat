@@ -95,6 +95,30 @@ public static class UnitCatalog
     {
         return new Dictionary<UnitType, UnitDefinition>
         {
+            [UnitType.Scout] = new()
+            {
+                Type = UnitType.Scout,
+                DisplayName = "Scout",
+                MaxStrength = 60,
+                BaseDefense = 6,
+                ArmorClass = ArmorClass.Soft,
+                Weapons =
+                [
+                    new Weapon
+                    {
+                        Id = "carbine",
+                        Name = "Carbine",
+                        Range = 1,
+                        BaseDamage = 5,
+                        Category = DamageCategory.SmallArms
+                    }
+                ],
+                Abilities = [],
+                UpgradeXpCosts = new()
+                {
+                    [UpgradeType.Camouflage] = 40
+                }
+            },
             [UnitType.Infantry] = new()
             {
                 Type = UnitType.Infantry,

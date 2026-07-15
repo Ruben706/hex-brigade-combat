@@ -1,7 +1,7 @@
 // Port of CombatGame.Domain — authoritative game rules for Appwrite Functions
 import { randomUUID } from 'node:crypto';
 
-export type UnitType = 'Infantry' | 'Tank' | 'Artillery' | 'AntiTank';
+export type UnitType = 'Scout' | 'Infantry' | 'Tank' | 'Artillery' | 'AntiTank';
 export type DamageCategory = 'SmallArms' | 'HighExplosive' | 'AntiArmor';
 export type ArmorClass = 'Soft' | 'Medium' | 'Heavy';
 export type GameMode = 'Hotseat' | 'VsAi' | 'Multiplayer';
@@ -133,6 +133,7 @@ export interface BrigadeDto {
   abilities: Ability[];
   movementRange: number;
   movementPointsRemaining: number;
+  visionRange: number;
   currentAccuracy: number;
 }
 
@@ -204,6 +205,12 @@ const UNIT_DEFS: Record<UnitType, {
   abilities: Ability[];
   upgradeXp: Record<string, number>;
 }> = {
+  Scout: {
+    maxStrength: 60, baseDefense: 6, armorClass: 'Soft',
+    weapons: [{ id: 'carbine', name: 'Carbine', range: 1, baseDamage: 5, category: 'SmallArms' }],
+    abilities: [],
+    upgradeXp: { Camouflage: 40 },
+  },
   Infantry: {
     maxStrength: 100, baseDefense: 10, armorClass: 'Soft',
     weapons: [{ id: 'rifle', name: 'Rifle', range: 1, baseDamage: 8, category: 'SmallArms' }],
@@ -299,6 +306,7 @@ function getAvailableUpgrades(b: Brigade): string[] {
 export function getMovementPointsForUnit(unitType: UnitType): number {
   switch (unitType) {
     case 'Tank': return 4;
+    case 'Scout': return 3;
     case 'Artillery': return 1;
     case 'Infantry':
     case 'AntiTank':
@@ -306,6 +314,22 @@ export function getMovementPointsForUnit(unitType: UnitType): number {
     default:
       return 1;
   }
+}
+
+export function getVisionRangeForUnit(unitType: UnitType): number {
+  switch (unitType) {
+    case 'Scout': return 5;
+    case 'Infantry': return 4;
+    case 'AntiTank': return 3;
+    case 'Tank': return 2;
+    case 'Artillery': return 1;
+    default:
+      return 2;
+  }
+}
+
+export function getVisionRange(b: Brigade): number {
+  return getVisionRangeForUnit(b.unitType);
 }
 
 export function getMovementPoints(b: Brigade): number {
@@ -514,11 +538,11 @@ export function createSkirmish(mode: GameMode): InternalGameState {
   };
 
   const p0: Array<[UnitType, HexCoord]> = [
-    ['Infantry', { q: 1, r: 2 }], ['Infantry', { q: 1, r: 4 }],
+    ['Scout', { q: 2, r: 3 }], ['Infantry', { q: 1, r: 4 }],
     ['Tank', { q: 0, r: 3 }], ['Artillery', { q: 0, r: 1 }], ['AntiTank', { q: 0, r: 5 }],
   ];
   const p1: Array<[UnitType, HexCoord]> = [
-    ['Infantry', { q: 10, r: 2 }], ['Infantry', { q: 10, r: 4 }],
+    ['Scout', { q: 9, r: 3 }], ['Infantry', { q: 10, r: 4 }],
     ['Tank', { q: 11, r: 3 }], ['Artillery', { q: 11, r: 1 }], ['AntiTank', { q: 11, r: 5 }],
   ];
   for (const [t, pos] of p0) state.brigades.push(createBrigade(t, 0, pos));
@@ -771,6 +795,7 @@ export function toDto(state: InternalGameState): GameStateDto {
       abilities: getAbilities(b),
       movementRange: getMovementPoints(b),
       movementPointsRemaining: b.turnState.movementPointsRemaining,
+      visionRange: getVisionRange(b),
       currentAccuracy: getAccuracy(b),
     })),
     eventLog: [...state.eventLog],

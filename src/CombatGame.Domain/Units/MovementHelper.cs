@@ -8,6 +8,7 @@ public static class MovementHelper
     public static int GetMovementPoints(UnitType unitType) => unitType switch
     {
         UnitType.Tank => 4,
+        UnitType.Scout => 3,
         UnitType.Artillery => 1,
         UnitType.Infantry => 2,
         UnitType.AntiTank => 2,

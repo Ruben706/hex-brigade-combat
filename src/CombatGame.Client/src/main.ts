@@ -16,6 +16,7 @@ import type {
   GameStateDto,
 } from './types/game';
 import { PLAYER_COLORS } from './types/game';
+import { computeVisibleHexes, getVisionRange, isBrigadeVisible, isHexVisible } from './vision/fogOfWar';
 
 const app = document.querySelector<HTMLDivElement>('#app')!;
 
@@ -268,23 +269,39 @@ function updateUi(): void {
   updateVictoryOverlay();
 }
 
+function getVisionPlayerId(): number {
+  if (!gameState) return localPlayerId;
+  if (gameState.mode === 'Hotseat') return gameState.currentPlayerId;
+  return localPlayerId;
+}
+
 function refreshCanvas(): void {
   if (!gameState || !hexRenderer) return;
 
   const canvas = document.getElementById('game-canvas') as HTMLCanvasElement;
   hexRenderer.resize(canvas.width, canvas.height);
 
-  const { moveHexes, attackHexes, rangeHexes } = computeHighlights();
+  const viewingPlayerId = getVisionPlayerId();
+  const visibleHexes = computeVisibleHexes(
+    gameState.brigades,
+    viewingPlayerId,
+    gameState.gridWidth,
+    gameState.gridHeight,
+  );
+  const { moveHexes, attackHexes, rangeHexes } = computeHighlights(visibleHexes);
+
   hexRenderer.render(gameState, {
     selectedBrigadeId,
     highlightHexes: moveHexes,
     attackHexes,
     rangeHexes,
+    visibleHexes,
+    viewingPlayerId,
     damagePopups: getActiveDamagePopups(),
   });
 }
 
-function computeHighlights(): {
+function computeHighlights(visibleHexes: Set<string>): {
   moveHexes: HexCoord[];
   attackHexes: HexCoord[];
   rangeHexes: HexCoord[];
@@ -305,7 +322,8 @@ function computeHighlights(): {
           hex.q >= 0 &&
           hex.r >= 0 &&
           hex.q < gameState.gridWidth &&
-          hex.r < gameState.gridHeight
+          hex.r < gameState.gridHeight &&
+          isHexVisible(visibleHexes, hex)
         ) {
           rangeHexes.push(hex);
         }
@@ -331,12 +349,13 @@ function computeHighlights(): {
         gameState.gridWidth,
         gameState.gridHeight,
         occupied,
-      ),
+      ).filter((hex) => isHexVisible(visibleHexes, hex)),
     );
   }
 
   if (actionMode.kind === 'weapon') {
     for (const hex of withinRange(brigade.q, brigade.r, actionMode.range)) {
+      if (!isHexVisible(visibleHexes, hex)) continue;
       const target = gameState.brigades.find((b) => b.q === hex.q && b.r === hex.r);
       if (target && target.playerId !== brigade.playerId) {
         attackHexes.push(hex);
@@ -392,6 +411,7 @@ function updateBrigadePanel(): void {
     <p>Position: (${brigade.q}, ${brigade.r})</p>
     <p>Status: ${brigade.statusEffects.length ? brigade.statusEffects.join(', ') : 'None'}</p>
     <p>Movement: ${brigade.movementPointsRemaining}/${brigade.movementRange} points</p>
+    <p>Vision: ${brigade.visionRange ?? getVisionRange(brigade.unitType)} hexes</p>
     <p>Accuracy: ${Math.round(brigade.currentAccuracy * 100)}%${brigade.hasMoved ? ' (moved — halved)' : ''}</p>
     <p>Upgrades: ${brigade.upgrades.length ? brigade.upgrades.join(', ') : 'None'}</p>
     <p>Moved: ${brigade.hasMoved ? 'Yes' : 'No'} | Ability used: ${brigade.hasUsedAbility ? 'Yes' : 'No'}</p>
@@ -520,7 +540,18 @@ function selectBrigade(brigade: BrigadeDto | null): void {
 async function handleCanvasClick(x: number, y: number): Promise<void> {
   if (!gameState || !gameId || !hexRenderer) return;
 
-  const brigadeAt = hexRenderer.pickBrigade(x, y, gameState.brigades);
+  const viewingPlayerId = getVisionPlayerId();
+  const visibleHexes = computeVisibleHexes(
+    gameState.brigades,
+    viewingPlayerId,
+    gameState.gridWidth,
+    gameState.gridHeight,
+  );
+  const visibleBrigades = gameState.brigades.filter((b) =>
+    isBrigadeVisible(b, viewingPlayerId, visibleHexes),
+  );
+
+  const brigadeAt = hexRenderer.pickBrigade(x, y, visibleBrigades);
   const hex = brigadeAt
     ? { q: brigadeAt.q, r: brigadeAt.r }
     : hexRenderer.pickHex(x, y);
@@ -530,7 +561,8 @@ async function handleCanvasClick(x: number, y: number): Promise<void> {
 
     const isValidMove =
       hexRenderer.isOnGrid(hex) &&
-      computeHighlights().moveHexes.some((h) => h.q === hex.q && h.r === hex.r);
+      isHexVisible(visibleHexes, hex) &&
+      computeHighlights(visibleHexes).moveHexes.some((h) => h.q === hex.q && h.r === hex.r);
 
     if (isValidMove) {
       const brigadeId = actionMode.brigadeId;

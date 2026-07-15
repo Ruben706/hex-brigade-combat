@@ -276,18 +276,18 @@ public class MovementTests
     {
         var state = DefaultSkirmishMap.Create(GameMode.Hotseat);
         var tank = state.Brigades.First(b => b.UnitType == UnitType.Tank && b.PlayerId == 0);
-        tank.Position = new HexCoord(5, 3);
+        tank.Position = new HexCoord(4, 6);
 
         var result = GameEngine.Execute(state, new GameCommand
         {
             Type = CommandType.Move,
             PlayerId = 0,
             BrigadeId = tank.Id,
-            TargetCoord = new HexCoord(9, 3)
+            TargetCoord = new HexCoord(8, 6)
         });
 
         Assert.True(result.Success);
-        Assert.Equal(new HexCoord(9, 3), tank.Position);
+        Assert.Equal(new HexCoord(8, 6), tank.Position);
         Assert.Equal(0, tank.TurnState.MovementPointsRemaining);
     }
 
@@ -327,6 +327,31 @@ public class MovementTests
         });
 
         Assert.False(result.Success);
+    }
+}
+
+public class VisionTests
+{
+    [Fact]
+    public void VisionRanges_AreOrderedByUnitType()
+    {
+        Assert.True(VisionHelper.GetVisionRange(UnitType.Scout) > VisionHelper.GetVisionRange(UnitType.Infantry));
+        Assert.True(VisionHelper.GetVisionRange(UnitType.Infantry) > VisionHelper.GetVisionRange(UnitType.AntiTank));
+        Assert.True(VisionHelper.GetVisionRange(UnitType.AntiTank) > VisionHelper.GetVisionRange(UnitType.Tank));
+        Assert.True(VisionHelper.GetVisionRange(UnitType.Tank) > VisionHelper.GetVisionRange(UnitType.Artillery));
+    }
+
+    [Fact]
+    public void FriendlyBrigades_RevealHexesWithinVision()
+    {
+        var state = DefaultSkirmishMap.Create(GameMode.Hotseat);
+        var scout = state.Brigades.First(b => b.UnitType == UnitType.Scout && b.PlayerId == 0);
+        scout.Position = new HexCoord(5, 3);
+
+        var visible = VisionHelper.GetVisibleHexes([scout], state.Grid);
+
+        Assert.Contains(new HexCoord(10, 3), visible);
+        Assert.DoesNotContain(new HexCoord(11, 3), visible);
     }
 }
 

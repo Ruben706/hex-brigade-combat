@@ -26,7 +26,7 @@ public static class DefaultSkirmishMap
 
         var player0Units = new (UnitType type, HexCoord pos)[]
         {
-            (UnitType.Infantry, new HexCoord(1, 2)),
+            (UnitType.Scout, new HexCoord(2, 3)),
             (UnitType.Infantry, new HexCoord(1, 4)),
             (UnitType.Tank, new HexCoord(0, 3)),
             (UnitType.Artillery, new HexCoord(0, 1)),
@@ -35,7 +35,7 @@ public static class DefaultSkirmishMap
 
         var player1Units = new (UnitType type, HexCoord pos)[]
         {
-            (UnitType.Infantry, new HexCoord(10, 2)),
+            (UnitType.Scout, new HexCoord(9, 3)),
             (UnitType.Infantry, new HexCoord(10, 4)),
             (UnitType.Tank, new HexCoord(11, 3)),
             (UnitType.Artillery, new HexCoord(11, 1)),

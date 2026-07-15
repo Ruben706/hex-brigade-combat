@@ -34,6 +34,7 @@ export interface BrigadeDto {
   /** Max movement points per turn for this unit type. */
   movementRange: number;
   movementPointsRemaining: number;
+  visionRange: number;
   currentAccuracy: number;
 }
 
@@ -83,6 +84,7 @@ export type ActionMode =
 export const PLAYER_COLORS = ['#4a90d9', '#d94a4a'] as const;
 
 export const UNIT_LABELS: Record<string, string> = {
+  Scout: 'SCT',
   Infantry: 'INF',
   Tank: 'TNK',
   Artillery: 'ART',

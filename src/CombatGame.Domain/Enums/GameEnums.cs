@@ -2,6 +2,7 @@ namespace CombatGame.Domain.Enums;
 
 public enum UnitType
 {
+    Scout,
     Infantry,
     Tank,
     Artillery,
