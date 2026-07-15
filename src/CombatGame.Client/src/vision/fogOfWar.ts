@@ -39,7 +39,6 @@ export function computeVisibleHexes(
   viewingPlayerId: number,
   gridWidth: number,
   gridHeight: number,
-  terrain: Map<string, string>,
 ): Set<string> {
   const visible = new Set<string>();
 

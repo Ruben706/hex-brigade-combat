@@ -293,7 +293,6 @@ function refreshCanvas(): void {
     viewingPlayerId,
     gameState.gridWidth,
     gameState.gridHeight,
-    terrain,
   );
   const { moveHexes, attackHexes, rangeHexes } = computeHighlights(visibleHexes, terrain);
 
@@ -563,7 +562,6 @@ async function handleCanvasClick(x: number, y: number): Promise<void> {
     viewingPlayerId,
     gameState.gridWidth,
     gameState.gridHeight,
-    terrain,
   );
   const visibleBrigades = gameState.brigades.filter((b) =>
     isBrigadeVisible(b, viewingPlayerId, visibleHexes, gameState!.brigades, terrain),
