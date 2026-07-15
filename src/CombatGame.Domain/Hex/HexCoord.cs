@@ -1,50 +1,45 @@
 namespace CombatGame.Domain.Hex;
 
 /// <summary>
-/// Odd-r offset coordinates (Q = column, R = row) on a rectangular pointy-top hex grid.
-/// All coordinates on a W×H map are non-negative; cube math is used internally for
-/// distance / neighbor / range calculations.
+/// Square grid tile coordinate. Q = column, R = row (both zero-based).
 /// </summary>
 public readonly record struct HexCoord(int Q, int R)
 {
-    public (int Q, int R) ToAxial() => (Q - (R - (R & 1)) / 2, R);
+    private static readonly (int Dq, int Dr)[] OrthogonalDirs =
+    [
+        (1, 0), (0, -1), (-1, 0), (0, 1)
+    ];
 
-    public static HexCoord FromAxial(int axialQ, int axialR) =>
-        new(axialQ + (axialR - (axialR & 1)) / 2, axialR);
+    /// <summary>Chebyshev distance — used for weapon range and vision.</summary>
+    public int DistanceTo(HexCoord other) =>
+        Math.Max(Math.Abs(Q - other.Q), Math.Abs(R - other.R));
 
-    public int DistanceTo(HexCoord other)
-    {
-        var (aq1, ar1) = ToAxial();
-        var (aq2, ar2) = other.ToAxial();
-        var s1 = -aq1 - ar1;
-        var s2 = -aq2 - ar2;
-        return (Math.Abs(aq1 - aq2) + Math.Abs(ar1 - ar2) + Math.Abs(s1 - s2)) / 2;
-    }
-
+    /// <summary>Orthogonal neighbor (0=E, 1=N, 2=W, 3=S).</summary>
     public HexCoord Neighbor(int direction)
     {
-        ReadOnlySpan<(int dq, int dr)> evenRow =
-        [
-            (1, 0), (0, -1), (-1, -1), (-1, 0), (-1, 1), (0, 1)
-        ];
-        ReadOnlySpan<(int dq, int dr)> oddRow =
-        [
-            (1, 0), (1, -1), (0, -1), (-1, 0), (0, 1), (1, 1)
-        ];
-        var (dq, dr) = (R & 1) == 0 ? evenRow[direction % 6] : oddRow[direction % 6];
+        var (dq, dr) = OrthogonalDirs[direction % 4];
         return new HexCoord(Q + dq, R + dr);
     }
 
+    public IEnumerable<HexCoord> OrthogonalNeighbors()
+    {
+        for (var i = 0; i < 4; i++)
+        {
+            yield return Neighbor(i);
+        }
+    }
+
+    /// <summary>All tiles within Chebyshev range (square area).</summary>
     public IEnumerable<HexCoord> WithinRange(int range)
     {
-        var (aq, ar) = ToAxial();
-        for (var dq = -range; dq <= range; dq++)
+        for (var dc = -range; dc <= range; dc++)
         {
-            var r1 = Math.Max(-range, -dq - range);
-            var r2 = Math.Min(range, -dq + range);
-            for (var dr = r1; dr <= r2; dr++)
+            for (var dr = -range; dr <= range; dr++)
             {
-                yield return FromAxial(aq + dq, ar + dr);
+                if (Math.Max(Math.Abs(dc), Math.Abs(dr)) <= range)
+                {
+                    yield return new HexCoord(Q + dc, R + dr);
+                }
             }
         }
     }

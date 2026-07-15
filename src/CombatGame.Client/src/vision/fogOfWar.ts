@@ -1,7 +1,7 @@
-import { hexDistance, withinRange, type HexCoord } from '../render/HexRenderer';
+import { withinRange, type HexCoord } from '../render/HexRenderer';
 import type { BrigadeDto, TileDto } from '../types/game';
 import { generateTilesForGame } from '../map/proceduralMap';
-import { eachOffsetHex, isOnOffsetGridCoord } from '../map/hexOffset';
+import { eachOffsetHex, isOnOffsetGridCoord, isTilesAdjacent } from '../map/hexOffset';
 
 const VISION_BY_UNIT: Record<string, number> = {
   Scout: 5,
@@ -86,6 +86,6 @@ export function isBrigadeVisible(
 
   const friendlies = allBrigades.filter((b) => b.playerId === viewingPlayerId);
   return friendlies.some(
-    (friendly) => hexDistance({ q: friendly.q, r: friendly.r }, { q: brigade.q, r: brigade.r }) === 1,
+    (friendly) => isTilesAdjacent({ q: friendly.q, r: friendly.r }, { q: brigade.q, r: brigade.r }),
   );
 }

@@ -2,22 +2,7 @@ import type { HexCoord } from '../render/HexRenderer';
 
 export const DEFAULT_MAP_SIZE = 16;
 
-/**
- * Coordinates are odd-r offset: q = column, r = row, both in [0, size).
- * Axial coordinates only appear internally for hex math.
- */
-
-export function offsetToAxial(col: number, row: number): { q: number; r: number } {
-  return { q: col - (row - (row & 1)) / 2, r: row };
-}
-
-export function axialToOffset(q: number, r: number): { col: number; row: number } {
-  return { col: q + (r - (r & 1)) / 2, row: r };
-}
-
-function normalizeGridDimension(value: number, fallback: number): number {
-  return Number.isFinite(value) && value > 0 ? Math.trunc(value) : fallback;
-}
+/** q = column, r = row on a square tile grid. */
 
 export function isOnOffsetGrid(
   q: number,
@@ -27,8 +12,8 @@ export function isOnOffsetGrid(
   fallbackSize = DEFAULT_MAP_SIZE,
 ): boolean {
   if (!Number.isFinite(q) || !Number.isFinite(r)) return false;
-  const w = normalizeGridDimension(width, fallbackSize);
-  const h = normalizeGridDimension(height, fallbackSize);
+  const w = Number.isFinite(width) && width > 0 ? Math.trunc(width) : fallbackSize;
+  const h = Number.isFinite(height) && height > 0 ? Math.trunc(height) : fallbackSize;
   return q >= 0 && q < w && r >= 0 && r < h;
 }
 
@@ -36,36 +21,38 @@ export function isOnOffsetGridCoord(hex: HexCoord, width: number, height: number
   return isOnOffsetGrid(hex.q, hex.r, width, height);
 }
 
-const EVEN_ROW_DIRS = [
-  [1, 0], [0, -1], [-1, -1], [-1, 0], [-1, 1], [0, 1],
-] as const;
-const ODD_ROW_DIRS = [
-  [1, 0], [1, -1], [0, -1], [-1, 0], [0, 1], [1, 1],
+const ORTHOGONAL_DIRS = [
+  [1, 0], [0, -1], [-1, 0], [0, 1],
 ] as const;
 
+/** Orthogonal neighbor (movement uses 4 directions). */
 export function offsetNeighbor(hex: HexCoord, dir: number): HexCoord {
-  const dirs = (hex.r & 1) === 0 ? EVEN_ROW_DIRS : ODD_ROW_DIRS;
-  const [dq, dr] = dirs[dir % 6];
+  const [dq, dr] = ORTHOGONAL_DIRS[dir % 4];
   return { q: hex.q + dq, r: hex.r + dr };
 }
 
-export function offsetDistance(a: HexCoord, b: HexCoord): number {
-  const a1 = offsetToAxial(a.q, a.r);
-  const b1 = offsetToAxial(b.q, b.r);
-  const s1 = -a1.q - a1.r;
-  const s2 = -b1.q - b1.r;
-  return (Math.abs(a1.q - b1.q) + Math.abs(a1.r - b1.r) + Math.abs(s1 - s2)) / 2;
+export function orthogonalNeighbors(hex: HexCoord): HexCoord[] {
+  return ORTHOGONAL_DIRS.map(([dq, dr]) => ({ q: hex.q + dq, r: hex.r + dr }));
 }
 
+/** Chebyshev distance — weapon range and vision. */
+export function offsetDistance(a: HexCoord, b: HexCoord): number {
+  return Math.max(Math.abs(a.q - b.q), Math.abs(a.r - b.r));
+}
+
+/** Manhattan distance — orthogonal steps. */
+export function manhattanDistance(a: HexCoord, b: HexCoord): number {
+  return Math.abs(a.q - b.q) + Math.abs(a.r - b.r);
+}
+
+/** All tiles within Chebyshev range (square area). */
 export function offsetWithinRange(center: HexCoord, range: number): HexCoord[] {
-  const axial = offsetToAxial(center.q, center.r);
   const results: HexCoord[] = [];
-  for (let dq = -range; dq <= range; dq++) {
-    const r1 = Math.max(-range, -dq - range);
-    const r2 = Math.min(range, -dq + range);
-    for (let dr = r1; dr <= r2; dr++) {
-      const { col, row } = axialToOffset(axial.q + dq, axial.r + dr);
-      results.push({ q: col, r: row });
+  for (let dc = -range; dc <= range; dc++) {
+    for (let dr = -range; dr <= range; dr++) {
+      if (Math.max(Math.abs(dc), Math.abs(dr)) <= range) {
+        results.push({ q: center.q + dc, r: center.r + dr });
+      }
     }
   }
   return results;
@@ -101,4 +88,17 @@ export function hasCompleteOffsetTileSet(
     if (!(key in tiles)) return false;
   }
   return true;
+}
+
+// Legacy aliases (no-op conversions on square grid)
+export function offsetToAxial(col: number, row: number): { q: number; r: number } {
+  return { q: col, r: row };
+}
+
+export function axialToOffset(q: number, r: number): { col: number; row: number } {
+  return { col: q, row: r };
+}
+
+export function isTilesAdjacent(a: HexCoord, b: HexCoord): boolean {
+  return manhattanDistance(a, b) === 1;
 }

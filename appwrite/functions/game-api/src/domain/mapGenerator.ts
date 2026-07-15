@@ -1,7 +1,7 @@
 import type { HexCoord } from './gameDomain.js';
 import { hexKey } from './gameDomain.js';
 import type { TileMap, TerrainType } from './terrain.js';
-import { offsetNeighbor, offsetWithinRange, isOnOffsetGrid } from './hexOffset.js';
+import { isOnOffsetGrid, offsetNeighbor, offsetWithinRange, orthogonalNeighbors, manhattanDistance } from './hexOffset.js';
 
 export const MAP_SIZE = 16;
 
@@ -95,7 +95,7 @@ export function generateMap(seed: number): TileMap {
   for (const key of Object.keys(tiles)) {
     if (tiles[key] !== 'DeepWater') continue;
     const [q, r] = key.split(',').map(Number);
-    for (let d = 0; d < 6; d++) {
+    for (let d = 0; d < 4; d++) {
       const n = offsetNeighbor({ q, r }, d);
       if (!isOnGrid(n)) continue;
       const nKey = hexKey(n);

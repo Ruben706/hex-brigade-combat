@@ -75,6 +75,6 @@ public static class VisionHelper
             return true;
         }
 
-        return friendly.Any(b => b.Position.DistanceTo(target.Position) == 1);
+        return friendly.Any(b => state.Grid.IsAdjacent(b.Position, target.Position));
     }
 }

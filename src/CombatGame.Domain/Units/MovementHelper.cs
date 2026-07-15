@@ -41,7 +41,7 @@ public static class MovementHelper
                 continue; // stale entry
             }
 
-            for (var i = 0; i < 6; i++)
+            for (var i = 0; i < 4; i++)
             {
                 var neighbor = current.Neighbor(i);
                 if (!grid.Contains(neighbor) || occupied.Contains(neighbor))
@@ -86,7 +86,7 @@ public static class MovementHelper
         HexGrid grid,
         HashSet<HexCoord> occupied)
     {
-        return start.DistanceTo(target) == 1 &&
+        return Math.Abs(start.Q - target.Q) + Math.Abs(start.R - target.R) == 1 &&
                grid.Contains(target) &&
                !occupied.Contains(target) &&
                TerrainHelper.IsPassable(grid.GetTerrain(target));
@@ -104,9 +104,8 @@ public static class MovementHelper
 
         if (isFirstMove)
         {
-            for (var i = 0; i < 6; i++)
+            foreach (var neighbor in start.OrthogonalNeighbors())
             {
-                var neighbor = start.Neighbor(i);
                 if (IsFreeAdjacentStep(start, neighbor, grid, occupied))
                 {
                     reachable.Add(neighbor);

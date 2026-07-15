@@ -116,7 +116,7 @@ export function generateMap(seed: number): TileMap {
   for (const key of Object.keys(tiles)) {
     if (tiles[key] !== 'DeepWater') continue;
     const [q, r] = key.split(',').map(Number);
-    for (let d = 0; d < 6; d++) {
+    for (let d = 0; d < 4; d++) {
       const n = offsetNeighbor({ q, r }, d);
       if (!isOnGrid(n)) continue;
       const nKey = hexKey(n);

@@ -32,7 +32,7 @@ public static class MapGenerator
                 continue;
             }
 
-            for (var d = 0; d < 6; d++)
+            for (var d = 0; d < 4; d++)
             {
                 var neighbor = tile.Coord.Neighbor(d);
                 if (!grid.Contains(neighbor))

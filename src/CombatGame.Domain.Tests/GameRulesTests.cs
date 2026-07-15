@@ -479,10 +479,10 @@ public class TerrainTests
     {
         var state = DefaultSkirmishMap.Create(GameMode.Hotseat);
         var tank = state.Brigades.First(b => b.UnitType == UnitType.Tank && b.PlayerId == 0);
-        var start = HexOffset.FromOddR(3, 7);
-        var target = HexOffset.FromOddR(0, 7);
+        var start = new HexCoord(4, 3);
+        var target = new HexCoord(0, 3);
         tank.Position = start;
-        TestMapHelper.SetPlains(state, start, target, HexOffset.FromOddR(1, 7), HexOffset.FromOddR(2, 7));
+        TestMapHelper.SetPlains(state, start, target, new HexCoord(3, 3), new HexCoord(2, 3), new HexCoord(1, 3));
 
         Assert.Equal(0, target.Q);
 
@@ -628,17 +628,13 @@ public class TerrainTests
     }
 
     [Fact]
-    public void OffsetNeighbors_AreAdjacentAndParityAware()
+    public void SquareGrid_OrthogonalNeighborsAreAdjacent()
     {
-        // Even row
-        var even = new HexCoord(5, 6);
-        // Odd row
-        var odd = new HexCoord(5, 7);
-
-        for (var d = 0; d < 6; d++)
+        var tile = new HexCoord(5, 7);
+        foreach (var neighbor in tile.OrthogonalNeighbors())
         {
-            Assert.Equal(1, even.DistanceTo(even.Neighbor(d)));
-            Assert.Equal(1, odd.DistanceTo(odd.Neighbor(d)));
+            Assert.Equal(1, tile.DistanceTo(neighbor));
+            Assert.True(new HexGrid(16, 16).IsAdjacent(tile, neighbor));
         }
     }
 

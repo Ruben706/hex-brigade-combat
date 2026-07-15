@@ -4,8 +4,11 @@ import { generateMap, MAP_SIZE } from './mapGenerator.js';
 import {
   hasCompleteOffsetTileSet,
   isOnOffsetGrid,
+  isTilesAdjacent,
+  manhattanDistance,
   offsetDistance,
   offsetNeighbor,
+  orthogonalNeighbors,
 } from './hexOffset.js';
 import {
   type TileMap,
@@ -214,8 +217,7 @@ export function syncGridDimensions(state: InternalGameState): void {
   state.gridHeight = MAP_SIZE;
 }
 
-// --- Hex ---
-// Coordinates are odd-r offset (q = column, r = row); math delegates to hexOffset.
+// --- Tile grid (q = column, r = row) ---
 
 export function hexKey(c: HexCoord): string {
   return `${c.q},${c.r}`;
@@ -415,7 +417,7 @@ function computePathCosts(
     frontier.delete(currentKey);
     const current = coords.get(currentKey)!;
 
-    for (let i = 0; i < 6; i++) {
+    for (let i = 0; i < 4; i++) {
       const n = hexNeighbor(current, i);
       if (!isOnOffsetGrid(n.q, n.r, gridW, gridH)) continue;
       const key = hexKey(n);
@@ -453,7 +455,7 @@ function isFreeAdjacentStep(
   tiles: TileMap,
 ): boolean {
   return (
-    hexDistance(start, target) === 1 &&
+    manhattanDistance(start, target) === 1 &&
     isOnOffsetGrid(target.q, target.r, gridW, gridH) &&
     !occupied.has(hexKey(target)) &&
     isPassable(getTerrain(tiles, target.q, target.r))
@@ -477,8 +479,7 @@ function getReachableHexes(
   }
 
   if (isFirstMove) {
-    for (let i = 0; i < 6; i++) {
-      const n = hexNeighbor(start, i);
+    for (const n of orthogonalNeighbors(start)) {
       if (isFreeAdjacentStep(start, n, gridW, gridH, occupied, tiles)) {
         result.set(hexKey(n), n);
       }

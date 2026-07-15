@@ -33,7 +33,7 @@ public sealed class HexGrid
         {
             for (var col = 0; col < width; col++)
             {
-                var coord = HexOffset.FromOddR(col, row);
+                var coord = new HexCoord(col, row);
                 _tiles[coord] = new HexTile { Coord = coord };
             }
         }
@@ -48,7 +48,7 @@ public sealed class HexGrid
             return tile.Terrain;
         }
 
-        return Contains(coord) ? TerrainType.Plains : throw new KeyNotFoundException($"Hex {coord} is not on the grid.");
+        return Contains(coord) ? TerrainType.Plains : throw new KeyNotFoundException($"Tile {coord} is not on the grid.");
     }
 
     public void SetTerrain(HexCoord coord, TerrainType terrain)
@@ -73,7 +73,7 @@ public sealed class HexGrid
         {
             for (var col = 0; col < Width; col++)
             {
-                var coord = HexOffset.FromOddR(col, row);
+                var coord = new HexCoord(col, row);
                 if (!_tiles.ContainsKey(coord))
                 {
                     _tiles[coord] = new HexTile { Coord = coord };
@@ -82,5 +82,6 @@ public sealed class HexGrid
         }
     }
 
-    public bool IsAdjacent(HexCoord a, HexCoord b) => a.DistanceTo(b) == 1;
+    public bool IsAdjacent(HexCoord a, HexCoord b) =>
+        Math.Abs(a.Q - b.Q) + Math.Abs(a.R - b.R) == 1;
 }
