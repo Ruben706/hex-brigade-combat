@@ -5,7 +5,8 @@ import {
   APPWRITE_GAMES_COLLECTION_ID,
   client,
 } from '../lib/appwrite';
-import type { GameCommandDto, GameMode, GameStateDto } from '../types/game';
+import type { GameCommandDto, GameMode, GameStateDto, LobbySummary } from '../types/game';
+import type { LoadoutUnit } from '../map/armyBuilder';
 
 function ensureFunctionConfigured(): void {
   if (!APPWRITE_FUNCTION_ID) {
@@ -71,8 +72,28 @@ export class AppwriteGameClient {
       action: 'createGame',
       mode,
     });
-    this.subscribeToGame(result.gameId);
+    await this.subscribeToGame(result.gameId);
     return { gameId: result.gameId, state: result.state };
+  }
+
+  async createLobby(
+    lobbyName: string,
+    playerId: number,
+  ): Promise<{ gameId: string; state: GameStateDto }> {
+    const result = await invoke<{ success: boolean; gameId: string; state: GameStateDto }>({
+      action: 'createLobby',
+      lobbyName,
+      playerId,
+    });
+    await this.subscribeToGame(result.gameId);
+    return { gameId: result.gameId, state: result.state };
+  }
+
+  async listLobbies(): Promise<LobbySummary[]> {
+    const result = await invoke<{ success: boolean; lobbies: LobbySummary[] }>({
+      action: 'listLobbies',
+    });
+    return result.lobbies ?? [];
   }
 
   async joinGame(
@@ -87,6 +108,97 @@ export class AppwriteGameClient {
     if (result.success && result.state) {
       await this.subscribeToGame(gameId);
     }
+    return result;
+  }
+
+  async updateLoadout(
+    gameId: string,
+    playerId: number,
+    roster: LoadoutUnit[],
+  ): Promise<{ success: boolean; error?: string; state?: GameStateDto }> {
+    const result = await invoke<{ success: boolean; error?: string; state?: GameStateDto }>({
+      action: 'updateLoadout',
+      gameId,
+      playerId,
+      roster,
+    });
+    if (result.success && result.state) this.onStateChanged?.(result.state);
+    return result;
+  }
+
+  async setLoadoutReady(
+    gameId: string,
+    playerId: number,
+    ready: boolean,
+  ): Promise<{ success: boolean; error?: string; state?: GameStateDto }> {
+    const result = await invoke<{ success: boolean; error?: string; state?: GameStateDto }>({
+      action: 'setLoadoutReady',
+      gameId,
+      playerId,
+      ready,
+    });
+    if (result.success && result.state) this.onStateChanged?.(result.state);
+    return result;
+  }
+
+  async deployUnit(
+    gameId: string,
+    playerId: number,
+    rosterIndex: number,
+    q: number,
+    r: number,
+  ): Promise<{ success: boolean; error?: string; state?: GameStateDto }> {
+    const result = await invoke<{ success: boolean; error?: string; state?: GameStateDto }>({
+      action: 'deployUnit',
+      gameId,
+      playerId,
+      rosterIndex,
+      targetQ: q,
+      targetR: r,
+    });
+    if (result.success && result.state) this.onStateChanged?.(result.state);
+    return result;
+  }
+
+  async clearDeployment(
+    gameId: string,
+    playerId: number,
+    rosterIndex?: number,
+  ): Promise<{ success: boolean; error?: string; state?: GameStateDto }> {
+    const result = await invoke<{ success: boolean; error?: string; state?: GameStateDto }>({
+      action: 'clearDeployment',
+      gameId,
+      playerId,
+      rosterIndex,
+    });
+    if (result.success && result.state) this.onStateChanged?.(result.state);
+    return result;
+  }
+
+  async setDeploymentReady(
+    gameId: string,
+    playerId: number,
+    ready: boolean,
+  ): Promise<{ success: boolean; error?: string; state?: GameStateDto }> {
+    const result = await invoke<{ success: boolean; error?: string; state?: GameStateDto }>({
+      action: 'setDeploymentReady',
+      gameId,
+      playerId,
+      ready,
+    });
+    if (result.success && result.state) this.onStateChanged?.(result.state);
+    return result;
+  }
+
+  async leaveLobby(
+    gameId: string,
+    playerId: number,
+  ): Promise<{ success: boolean; error?: string; state?: GameStateDto }> {
+    const result = await invoke<{ success: boolean; error?: string; state?: GameStateDto }>({
+      action: 'leaveLobby',
+      gameId,
+      playerId,
+    });
     return result;
   }
 

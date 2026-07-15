@@ -25,6 +25,10 @@ export interface RenderOptions {
   viewingPlayerId: number;
   terrain: Map<string, string>;
   damagePopups: DamagePopup[];
+  deploymentZoneHexes?: HexCoord[];
+  deploymentZoneFill?: string;
+  deploymentZoneContour?: string;
+  deploymentMarkers?: Array<{ q: number; r: number; label: string; selected?: boolean }>;
 }
 
 export interface DamagePopup {
@@ -47,6 +51,9 @@ const ATTACK_RANGE_FILL = 'rgba(255, 180, 90, 0.18)';
 const ATTACK_RANGE_CONTOUR = '#ffc866';
 const ATTACK_RANGE_GLOW = 'rgba(255, 200, 100, 0.4)';
 const ATTACK_TARGET_FILL = 'rgba(255, 90, 90, 0.32)';
+const DEPLOY_ZONE_FILL = 'rgba(74, 144, 217, 0.15)';
+const DEPLOY_ZONE_CONTOUR = '#6eb5ff';
+const DEPLOY_ZONE_GLOW = 'rgba(74, 144, 217, 0.35)';
 
 interface BoundarySegment {
   x1: number;
@@ -484,6 +491,9 @@ export class HexRenderer {
       if (visible && isAttackTarget) {
         this.drawTileOverlay(q, r, ATTACK_TARGET_FILL);
       }
+      if (options.deploymentZoneHexes?.some((h) => h.q === q && h.r === r)) {
+        this.drawTileOverlay(q, r, options.deploymentZoneFill ?? DEPLOY_ZONE_FILL);
+      }
     });
 
     if (fogEnabled) {
@@ -503,6 +513,18 @@ export class HexRenderer {
       (hex) => !fogEnabled || isHexVisible(options.visibleHexes!, hex),
     );
     this.drawRegionContour(visibleRangeHexes, ATTACK_RANGE_CONTOUR, ATTACK_RANGE_GLOW);
+
+    if (options.deploymentZoneHexes?.length) {
+      this.drawRegionContour(
+        options.deploymentZoneHexes,
+        options.deploymentZoneContour ?? DEPLOY_ZONE_CONTOUR,
+        DEPLOY_ZONE_GLOW,
+      );
+    }
+
+    for (const marker of options.deploymentMarkers ?? []) {
+      this.drawDeploymentMarker(marker.q, marker.r, marker.label, marker.selected ?? false);
+    }
 
     for (const brigade of state.brigades) {
       if (
@@ -529,6 +551,24 @@ export class HexRenderer {
     const { x: cx, y: cy } = this.hexToPixel(q, r);
     const half = this.screenTileSize() / 2;
     return { x: cx - half, y: cy - half, size: this.screenTileSize() };
+  }
+
+  private drawDeploymentMarker(q: number, r: number, label: string, selected: boolean): void {
+    const { x, y } = this.hexToPixel(q, r);
+    const tileSize = this.screenTileSize();
+    const radius = tileSize * 0.32;
+    this.ctx.beginPath();
+    this.ctx.arc(x, y, radius, 0, Math.PI * 2);
+    this.ctx.fillStyle = selected ? '#ffd166' : '#4a90d9';
+    this.ctx.fill();
+    this.ctx.strokeStyle = selected ? '#fff' : '#111';
+    this.ctx.lineWidth = selected ? 3 : 2;
+    this.ctx.stroke();
+    this.ctx.fillStyle = '#fff';
+    this.ctx.font = `bold ${Math.max(9, Math.round(tileSize * 0.34))}px Segoe UI, sans-serif`;
+    this.ctx.textAlign = 'center';
+    this.ctx.textBaseline = 'middle';
+    this.ctx.fillText(label, x, y);
   }
 
   private drawTile(q: number, r: number, stroke: string, fill: string, strokeOverride?: string): void {

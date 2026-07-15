@@ -60,6 +60,9 @@ public enum GameMode
 
 public enum GamePhase
 {
+    Lobby,
+    Loadout,
+    Deployment,
     InProgress,
     Victory
 }

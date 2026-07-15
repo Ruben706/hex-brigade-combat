@@ -59,4 +59,23 @@ public static class DefaultSkirmishMap
         TurnManager.ResetBrigadeTurnStates(state);
         return state;
     }
+
+    public static GameState CreateLobby(string lobbyName, int hostPlayerId)
+    {
+        var gameId = Guid.NewGuid();
+        var seed = gameId.ToString().Sum(c => c);
+        var rng = new Random(seed);
+        var grid = MapGenerator.Generate(rng);
+        var state = new GameState
+        {
+            GameId = gameId,
+            Mode = GameMode.Multiplayer,
+            Grid = grid,
+            Phase = GamePhase.Lobby,
+            AiPlayerId = -1,
+            Rng = rng
+        };
+        Lobby.LobbyService.CreateLobby(state, lobbyName, hostPlayerId);
+        return state;
+    }
 }

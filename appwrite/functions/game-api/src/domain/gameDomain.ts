@@ -24,7 +24,7 @@ export type UnitType = 'Scout' | 'Infantry' | 'Tank' | 'Artillery' | 'AntiTank';
 export type DamageCategory = 'SmallArms' | 'HighExplosive' | 'AntiArmor';
 export type ArmorClass = 'Soft' | 'Medium' | 'Heavy';
 export type GameMode = 'Hotseat' | 'VsAi' | 'Multiplayer';
-export type GamePhase = 'InProgress' | 'Victory';
+export type GamePhase = 'Lobby' | 'Loadout' | 'Deployment' | 'InProgress' | 'Victory';
 export type CommandType = 'Move' | 'UseWeapon' | 'UseAbility' | 'EndTurn';
 
 export interface HexCoord {
@@ -74,6 +74,7 @@ export interface Brigade {
   statusEffects: StatusEffect[];
   turnState: BrigadeTurnState;
   movedLastTurn: boolean;
+  fromLoadout?: boolean;
 }
 
 export interface GameEvent {
@@ -84,6 +85,22 @@ export interface GameEvent {
   targetR?: number;
   damage?: number;
   hit?: boolean;
+}
+
+export interface LoadoutUnitState {
+  unitType: UnitType;
+  upgrades: string[];
+}
+
+export interface PlayerLoadoutState {
+  roster: LoadoutUnitState[];
+  ready: boolean;
+}
+
+export interface DeploymentPlacementState {
+  rosterIndex: number;
+  q: number;
+  r: number;
 }
 
 export interface InternalGameState {
@@ -101,6 +118,11 @@ export interface InternalGameState {
   connectedPlayers: number[];
   aiPlayerId: number;
   rngSeed: number;
+  lobbyName: string;
+  hostPlayerId: number;
+  playerLoadouts: Record<number, PlayerLoadoutState>;
+  playerDeployments: Record<number, DeploymentPlacementState[]>;
+  deploymentReady: Record<number, boolean>;
 }
 
 export interface GameCommand {
@@ -133,6 +155,28 @@ export interface GameStateDto {
   brigades: BrigadeDto[];
   eventLog: GameEvent[];
   connectedPlayers: number[];
+  lobbyName: string;
+  hostPlayerId: number;
+  playerLoadouts: Record<number, PlayerLoadoutDto>;
+  playerDeployments: Record<number, DeploymentPlacementDto[]>;
+  deploymentReady: Record<number, boolean>;
+}
+
+export interface LoadoutUnitDto {
+  unitType: string;
+  upgrades: string[];
+}
+
+export interface PlayerLoadoutDto {
+  roster: LoadoutUnitDto[];
+  ready: boolean;
+  unitCount: number;
+}
+
+export interface DeploymentPlacementDto {
+  rosterIndex: number;
+  q: number;
+  r: number;
 }
 
 export interface TileDto {
@@ -596,6 +640,7 @@ function checkVictory(state: InternalGameState): void {
 }
 
 function applyUpgrades(b: Brigade, state: InternalGameState): void {
+  if (b.fromLoadout) return;
   for (const u of getAvailableUpgrades(b)) {
     if (!b.upgrades.includes(u)) {
       b.upgrades.push(u);
@@ -707,6 +752,52 @@ function coerceTileMap(tiles: unknown): TileMap {
   return { ...(tiles as TileMap) };
 }
 
+function coerceReadyMap(raw: unknown): Record<number, boolean> {
+  if (!raw || typeof raw !== 'object') return { 0: false, 1: false };
+  const out: Record<number, boolean> = { 0: false, 1: false };
+  for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
+    out[Number(key)] = Boolean(value);
+  }
+  return out;
+}
+
+function coerceLoadouts(raw: unknown): Record<number, PlayerLoadoutState> {
+  const defaults: Record<number, PlayerLoadoutState> = {
+    0: { roster: [], ready: false },
+    1: { roster: [], ready: false },
+  };
+  if (!raw || typeof raw !== 'object') return defaults;
+  for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
+    const pid = Number(key);
+    const entry = value as { roster?: LoadoutUnitState[]; ready?: boolean };
+    defaults[pid] = {
+      roster: Array.isArray(entry?.roster)
+        ? entry.roster.map((u) => ({
+            unitType: u.unitType as UnitType,
+            upgrades: [...(u.upgrades ?? [])],
+          }))
+        : [],
+      ready: Boolean(entry?.ready),
+    };
+  }
+  return defaults;
+}
+
+function coerceDeployments(raw: unknown): Record<number, DeploymentPlacementState[]> {
+  const defaults: Record<number, DeploymentPlacementState[]> = { 0: [], 1: [] };
+  if (!raw || typeof raw !== 'object') return defaults;
+  for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
+    defaults[Number(key)] = Array.isArray(value)
+      ? (value as DeploymentPlacementState[]).map((p) => ({
+          rosterIndex: Number(p.rosterIndex),
+          q: Number(p.q),
+          r: Number(p.r),
+        }))
+      : [];
+  }
+  return defaults;
+}
+
 /** Normalize persisted JSON (camelCase/PascalCase, tile array vs map). */
 export function coerceInternalState(raw: Record<string, unknown>): InternalGameState {
   const record = raw as Record<string, unknown> & InternalGameState;
@@ -736,6 +827,11 @@ export function coerceInternalState(raw: Record<string, unknown>): InternalGameS
       : [],
     aiPlayerId: Number(record.aiPlayerId ?? record['AiPlayerId'] ?? -1),
     rngSeed: Number(record.rngSeed ?? record['RngSeed'] ?? hashGameId(gameId)),
+    lobbyName: String(record.lobbyName ?? record['LobbyName'] ?? ''),
+    hostPlayerId: Number(record.hostPlayerId ?? record['HostPlayerId'] ?? 0),
+    playerLoadouts: coerceLoadouts(record.playerLoadouts ?? record['PlayerLoadouts']),
+    playerDeployments: coerceDeployments(record.playerDeployments ?? record['PlayerDeployments']),
+    deploymentReady: coerceReadyMap(record.deploymentReady ?? record['DeploymentReady']),
   };
 
   for (const brigade of state.brigades) {
@@ -769,7 +865,9 @@ export function ensureMapGenerated(state: InternalGameState): boolean {
 
   if (needsFullRegen) {
     state.tiles = { ...generated };
-    migrateBrigadePositions(state);
+    if (state.phase === 'InProgress' || state.phase === 'Victory') {
+      migrateBrigadePositions(state);
+    }
   } else {
     syncOffsetTiles(state, generated);
   }
@@ -802,6 +900,11 @@ export function createSkirmish(mode: GameMode): InternalGameState {
     connectedPlayers: [],
     aiPlayerId: mode === 'VsAi' ? 1 : -1,
     rngSeed,
+    lobbyName: '',
+    hostPlayerId: 0,
+    playerLoadouts: { 0: { roster: [], ready: false }, 1: { roster: [], ready: false } },
+    playerDeployments: { 0: [], 1: [] },
+    deploymentReady: { 0: false, 1: false },
   };
 
   const p0: Array<[UnitType, HexCoord]> = [
@@ -823,6 +926,9 @@ export function createSkirmish(mode: GameMode): InternalGameState {
 export function executeCommand(state: InternalGameState, command: GameCommand): CommandResult {
   ensureMapGenerated(state);
   if (state.phase === 'Victory') return { success: false, error: 'Game is over.' };
+  if (state.phase !== 'InProgress') {
+    return { success: false, error: 'Battle has not started yet.' };
+  }
   if (command.playerId !== state.currentPlayerId) return { success: false, error: 'Not your turn.' };
 
   const rng = new SeededRng(state.rngSeed + state.turnNumber * 1000 + state.eventLog.length);
@@ -1057,6 +1163,23 @@ export function toDto(state: InternalGameState): GameStateDto {
     winnerId: state.winnerId,
     aiPlayerId: state.aiPlayerId,
     connectedPlayers: [...state.connectedPlayers].sort(),
+    lobbyName: state.lobbyName ?? '',
+    hostPlayerId: state.hostPlayerId ?? 0,
+    playerLoadouts: Object.fromEntries(
+      Object.entries(state.playerLoadouts ?? {}).map(([pid, loadout]) => [
+        Number(pid),
+        {
+          roster: loadout.roster.map((u) => ({
+            unitType: u.unitType,
+            upgrades: [...u.upgrades],
+          })),
+          ready: loadout.ready,
+          unitCount: loadout.roster.length,
+        },
+      ]),
+    ),
+    playerDeployments: state.playerDeployments ?? { 0: [], 1: [] },
+    deploymentReady: state.deploymentReady ?? { 0: false, 1: false },
     brigades: state.brigades.map((b) => ({
       id: b.id,
       playerId: b.playerId,
@@ -1104,6 +1227,11 @@ export function fromDto(dto: GameStateDto): InternalGameState {
     aiPlayerId: dto.aiPlayerId,
     connectedPlayers: [...dto.connectedPlayers],
     rngSeed: hashGameId(dto.gameId),
+    lobbyName: dto.lobbyName ?? '',
+    hostPlayerId: dto.hostPlayerId ?? 0,
+    playerLoadouts: coerceLoadouts(dto.playerLoadouts),
+    playerDeployments: coerceDeployments(dto.playerDeployments),
+    deploymentReady: coerceReadyMap(dto.deploymentReady),
     eventLog: dto.eventLog.map((e) => ({ ...e })),
     brigades: dto.brigades.map((b) => ({
       id: b.id,
@@ -1117,6 +1245,7 @@ export function fromDto(dto: GameStateDto): InternalGameState {
       upgrades: [...b.upgrades],
       statusEffects: b.statusEffects.map((t) => ({ type: t, remainingTurns: -1 })),
       movedLastTurn: false,
+      fromLoadout: false,
       turnState: {
         hasMoved: b.hasMoved,
         hasUsedAbility: b.hasUsedAbility,

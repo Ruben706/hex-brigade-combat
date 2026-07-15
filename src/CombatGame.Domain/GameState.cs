@@ -1,4 +1,5 @@
 using CombatGame.Domain.Enums;
+using CombatGame.Domain.Units;
 
 namespace CombatGame.Domain;
 
@@ -27,6 +28,11 @@ public sealed class GameState
     public HashSet<int> ConnectedPlayers { get; } = [];
     public int AiPlayerId { get; set; } = 1;
     public Random Rng { get; set; } = Random.Shared;
+    public string LobbyName { get; set; } = "";
+    public int HostPlayerId { get; set; }
+    public Dictionary<int, PlayerLoadout> PlayerLoadouts { get; } = new();
+    public Dictionary<int, List<DeploymentPlacement>> PlayerDeployments { get; } = new();
+    public Dictionary<int, bool> DeploymentReady { get; } = new();
 
     public Units.Brigade? GetBrigade(Guid id) =>
         Brigades.FirstOrDefault(b => b.Id == id);

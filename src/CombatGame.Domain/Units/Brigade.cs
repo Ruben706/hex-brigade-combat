@@ -27,6 +27,7 @@ public sealed class Brigade
     public List<StatusEffect> StatusEffects { get; } = [];
     public BrigadeTurnState TurnState { get; } = new();
     public bool MovedLastTurn { get; set; }
+    public bool FromLoadout { get; set; }
 
     public ArmorClass GetArmorClass() => UnitType switch
     {

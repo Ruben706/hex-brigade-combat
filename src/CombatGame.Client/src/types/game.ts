@@ -12,6 +12,31 @@ export interface TileDto {
   terrain: string;
 }
 
+export interface LoadoutUnitDto {
+  unitType: string;
+  upgrades: string[];
+}
+
+export interface PlayerLoadoutDto {
+  roster: LoadoutUnitDto[];
+  ready: boolean;
+  unitCount: number;
+}
+
+export interface DeploymentPlacementDto {
+  rosterIndex: number;
+  q: number;
+  r: number;
+}
+
+export interface LobbySummary {
+  gameId: string;
+  lobbyName: string;
+  playerCount: number;
+  phase: string;
+  hostPlayerId: number;
+}
+
 export interface GameStateDto {
   gameId: string;
   mode: string;
@@ -26,6 +51,11 @@ export interface GameStateDto {
   brigades: BrigadeDto[];
   eventLog: GameEventDto[];
   connectedPlayers: number[];
+  lobbyName?: string;
+  hostPlayerId?: number;
+  playerLoadouts?: Record<number, PlayerLoadoutDto>;
+  playerDeployments?: Record<number, DeploymentPlacementDto[]>;
+  deploymentReady?: Record<number, boolean>;
 }
 
 export interface BrigadeDto {

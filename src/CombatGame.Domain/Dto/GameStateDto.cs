@@ -7,6 +7,35 @@ using CombatGame.Domain.Units;
 
 namespace CombatGame.Domain.Dto;
 
+public sealed class LoadoutUnitDto
+{
+    public string UnitType { get; init; } = "";
+    public List<string> Upgrades { get; init; } = [];
+}
+
+public sealed class PlayerLoadoutDto
+{
+    public List<LoadoutUnitDto> Roster { get; init; } = [];
+    public bool Ready { get; init; }
+    public int UnitCount { get; init; }
+}
+
+public sealed class DeploymentPlacementDto
+{
+    public int RosterIndex { get; init; }
+    public int Q { get; init; }
+    public int R { get; init; }
+}
+
+public sealed class LobbySummaryDto
+{
+    public Guid GameId { get; init; }
+    public string LobbyName { get; init; } = "";
+    public int PlayerCount { get; init; }
+    public string Phase { get; init; } = "";
+    public int HostPlayerId { get; init; }
+}
+
 public sealed class GameStateDto
 {
     public Guid GameId { get; init; }
@@ -23,6 +52,11 @@ public sealed class GameStateDto
     public List<BrigadeDto> Brigades { get; init; } = [];
     public List<GameEventDto> EventLog { get; init; } = [];
     public List<int> ConnectedPlayers { get; init; } = [];
+    public string LobbyName { get; init; } = "";
+    public int HostPlayerId { get; init; }
+    public Dictionary<int, PlayerLoadoutDto> PlayerLoadouts { get; init; } = new();
+    public Dictionary<int, List<DeploymentPlacementDto>> PlayerDeployments { get; init; } = new();
+    public Dictionary<int, bool> DeploymentReady { get; init; } = new();
 }
 
 public sealed class TileDto
@@ -116,6 +150,20 @@ public static class GameStateMapper
             WinnerId = state.WinnerId,
             AiPlayerId = state.AiPlayerId,
             ConnectedPlayers = state.ConnectedPlayers.Order().ToList(),
+            LobbyName = state.LobbyName,
+            HostPlayerId = state.HostPlayerId,
+            PlayerLoadouts = state.PlayerLoadouts.ToDictionary(
+                kv => kv.Key,
+                kv => ToLoadoutDto(kv.Value)),
+            PlayerDeployments = state.PlayerDeployments.ToDictionary(
+                kv => kv.Key,
+                kv => kv.Value.Select(p => new DeploymentPlacementDto
+                {
+                    RosterIndex = p.RosterIndex,
+                    Q = p.Q,
+                    R = p.R
+                }).ToList()),
+            DeploymentReady = state.DeploymentReady.ToDictionary(kv => kv.Key, kv => kv.Value),
             Tiles = state.Grid.Tiles.Values.Select(t => new TileDto
             {
                 Q = t.Coord.Q,
@@ -135,6 +183,18 @@ public static class GameStateMapper
             }).ToList()
         };
     }
+
+    public static PlayerLoadoutDto ToLoadoutDto(PlayerLoadout loadout) =>
+        new()
+        {
+            Roster = loadout.Roster.Select(u => new LoadoutUnitDto
+            {
+                UnitType = u.UnitType.ToString(),
+                Upgrades = u.Upgrades.Select(x => x.ToString()).ToList()
+            }).ToList(),
+            Ready = loadout.Ready,
+            UnitCount = loadout.Roster.Count
+        };
 
     public static BrigadeDto ToBrigadeDto(Brigade brigade, HexGrid grid)
     {

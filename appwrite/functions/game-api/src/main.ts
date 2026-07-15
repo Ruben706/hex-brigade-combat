@@ -7,10 +7,21 @@ import {
   runAiTurn,
   toDto,
   commandFromDto,
-  type GameCommand,
   type GameCommandDto,
   type GameMode,
 } from './domain/gameDomain.js';
+import {
+  clearDeployment,
+  createLobbyState,
+  deployUnit,
+  joinLobby,
+  leaveLobby,
+  setDeploymentReady,
+  setLoadoutReady,
+  toLobbySummary,
+  updateLoadout,
+  type LoadoutUnit,
+} from './domain/lobby.js';
 
 const DB_ID = process.env.APPWRITE_DATABASE_ID || '6a5750b8002d1d05b18f';
 const TABLE_ID = process.env.APPWRITE_GAMES_COLLECTION_ID || 'games';
@@ -54,6 +65,12 @@ async function saveState(
     clientState: JSON.stringify(dto),
     mode: dto.mode,
     connectedPlayers: JSON.stringify(dto.connectedPlayers),
+    lobbyMeta: JSON.stringify({
+      lobbyName: dto.lobbyName,
+      phase: dto.phase,
+      playerCount: dto.connectedPlayers.length,
+      hostPlayerId: dto.hostPlayerId,
+    }),
   };
 
   await tablesDB.upsertRow({
@@ -70,6 +87,12 @@ interface RequestBody {
   gameId?: string;
   playerId?: number;
   command?: GameCommandDto;
+  lobbyName?: string;
+  roster?: LoadoutUnit[];
+  ready?: boolean;
+  rosterIndex?: number;
+  targetQ?: number;
+  targetR?: number;
 }
 
 export default async function handler({ req, res, log, error }: {
@@ -103,6 +126,39 @@ export default async function handler({ req, res, log, error }: {
         return res.json({ success: true, gameId: dto.gameId, state: dto });
       }
 
+      case 'createLobby': {
+        const internal = createLobbyState(body.lobbyName, body.playerId ?? 0);
+        ensureMapGenerated(internal);
+        await saveState(tablesDB, internal);
+        const dto = toDto(internal);
+        log(`Created lobby ${dto.gameId}`);
+        return res.json({ success: true, gameId: dto.gameId, state: dto });
+      }
+
+      case 'listLobbies': {
+        const result = await tablesDB.listRows({
+          databaseId: DB_ID,
+          tableId: TABLE_ID,
+        });
+        const lobbies = [];
+        for (const row of result.rows) {
+          try {
+            const parsed = JSON.parse(row.state as string) as Record<string, unknown>;
+            const state = coerceInternalState(parsed);
+            if (
+              state.mode === 'Multiplayer' &&
+              state.phase === 'Lobby' &&
+              state.connectedPlayers.length < 2
+            ) {
+              lobbies.push(toLobbySummary(state));
+            }
+          } catch {
+            /* skip malformed rows */
+          }
+        }
+        return res.json({ success: true, lobbies });
+      }
+
       case 'joinGame': {
         if (!body.gameId || body.playerId === undefined) {
           return res.json({ success: false, error: 'gameId and playerId required' }, 400);
@@ -110,10 +166,106 @@ export default async function handler({ req, res, log, error }: {
         const internal = await loadState(tablesDB, body.gameId);
         if (!internal) return res.json({ success: false, error: 'Game not found' }, 404);
 
-        if (!internal.connectedPlayers.includes(body.playerId)) {
-          internal.connectedPlayers.push(body.playerId);
-          await saveState(tablesDB, internal);
+        const result =
+          internal.mode === 'Multiplayer' && internal.phase !== 'InProgress' && internal.phase !== 'Victory'
+            ? joinLobby(internal, body.playerId)
+            : (() => {
+                if (internal.connectedPlayers.includes(body.playerId!)) {
+                  return { success: true as const };
+                }
+                if (internal.connectedPlayers.length >= 2) {
+                  return { success: false as const, error: 'Lobby is full.' };
+                }
+                internal.connectedPlayers.push(body.playerId!);
+                return { success: true as const };
+              })();
+
+        if (!result.success) {
+          return res.json({ success: false, error: result.error });
         }
+
+        await saveState(tablesDB, internal);
+        return res.json({ success: true, state: toDto(internal) });
+      }
+
+      case 'updateLoadout': {
+        if (!body.gameId || body.playerId === undefined || !body.roster) {
+          return res.json({ success: false, error: 'gameId, playerId, and roster required' }, 400);
+        }
+        const internal = await loadState(tablesDB, body.gameId);
+        if (!internal) return res.json({ success: false, error: 'Game not found' }, 404);
+        const result = updateLoadout(internal, body.playerId, body.roster);
+        if (!result.success) return res.json(result);
+        await saveState(tablesDB, internal);
+        return res.json({ success: true, state: toDto(internal) });
+      }
+
+      case 'setLoadoutReady': {
+        if (!body.gameId || body.playerId === undefined || body.ready === undefined) {
+          return res.json({ success: false, error: 'gameId, playerId, and ready required' }, 400);
+        }
+        const internal = await loadState(tablesDB, body.gameId);
+        if (!internal) return res.json({ success: false, error: 'Game not found' }, 404);
+        const result = setLoadoutReady(internal, body.playerId, body.ready);
+        if (!result.success) return res.json(result);
+        await saveState(tablesDB, internal);
+        return res.json({ success: true, state: toDto(internal) });
+      }
+
+      case 'deployUnit': {
+        if (
+          !body.gameId ||
+          body.playerId === undefined ||
+          body.rosterIndex === undefined ||
+          body.targetQ === undefined ||
+          body.targetR === undefined
+        ) {
+          return res.json({ success: false, error: 'gameId, playerId, rosterIndex, targetQ, targetR required' }, 400);
+        }
+        const internal = await loadState(tablesDB, body.gameId);
+        if (!internal) return res.json({ success: false, error: 'Game not found' }, 404);
+        const result = deployUnit(internal, body.playerId, body.rosterIndex, {
+          q: body.targetQ,
+          r: body.targetR,
+        });
+        if (!result.success) return res.json(result);
+        await saveState(tablesDB, internal);
+        return res.json({ success: true, state: toDto(internal) });
+      }
+
+      case 'clearDeployment': {
+        if (!body.gameId || body.playerId === undefined) {
+          return res.json({ success: false, error: 'gameId and playerId required' }, 400);
+        }
+        const internal = await loadState(tablesDB, body.gameId);
+        if (!internal) return res.json({ success: false, error: 'Game not found' }, 404);
+        const result = clearDeployment(internal, body.playerId, body.rosterIndex);
+        if (!result.success) return res.json(result);
+        await saveState(tablesDB, internal);
+        return res.json({ success: true, state: toDto(internal) });
+      }
+
+      case 'setDeploymentReady': {
+        if (!body.gameId || body.playerId === undefined || body.ready === undefined) {
+          return res.json({ success: false, error: 'gameId, playerId, and ready required' }, 400);
+        }
+        const internal = await loadState(tablesDB, body.gameId);
+        if (!internal) return res.json({ success: false, error: 'Game not found' }, 404);
+        const result = setDeploymentReady(internal, body.playerId, body.ready);
+        if (!result.success) return res.json(result);
+        await saveState(tablesDB, internal);
+        return res.json({ success: true, state: toDto(internal) });
+      }
+
+      case 'leaveLobby': {
+        if (!body.gameId || body.playerId === undefined) {
+          return res.json({ success: false, error: 'gameId and playerId required' }, 400);
+        }
+        const internal = await loadState(tablesDB, body.gameId);
+        if (!internal) return res.json({ success: false, error: 'Game not found' }, 404);
+        const result = leaveLobby(internal, body.playerId);
+        if (!result.success) return res.json(result);
+        await saveState(tablesDB, internal);
         return res.json({ success: true, state: toDto(internal) });
       }
 

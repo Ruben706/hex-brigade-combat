@@ -19,6 +19,14 @@ import { PLAYER_COLORS } from './types/game';
 import { computeVisibleHexes, buildTerrainMap, getVisionRange, isBrigadeVisible, isHexVisible } from './vision/fogOfWar';
 import { normalizeGameState } from './map/normalizeGameState';
 import { isOnOffsetGridCoord } from './map/hexOffset';
+import {
+  initPreBattle,
+  onPreBattleStateUpdate,
+  routeGamePhase,
+  showMainMenu as showPreBattleMainMenu,
+} from './ui/preBattle';
+
+const PRE_BATTLE_PHASES = new Set(['Lobby', 'Loadout', 'Deployment']);
 
 const app = document.querySelector<HTMLDivElement>('#app')!;
 
@@ -32,6 +40,8 @@ let hexRenderer: HexRenderer | null = null;
 let lastEventLogLength = 0;
 let damagePopupEntries: Array<{ q: number; r: number; text: string; createdAt: number }> = [];
 let popupAnimId: number | null = null;
+let multiplayerSessionActive = false;
+let battleUiInitialized = false;
 
 const POPUP_DURATION_MS = 1500;
 
@@ -43,12 +53,73 @@ function renderApp(): void {
         <div id="menu-screen" class="menu-screen">
           <button data-mode="Hotseat">Hotseat (2 Players)</button>
           <button data-mode="VsAi">vs AI</button>
-          <button data-mode="Multiplayer" id="create-mp-btn">Create Multiplayer Game</button>
-          <div class="join-row">
-            <input id="join-id" placeholder="Game ID to join" />
-            <button id="join-btn">Join as Player 2</button>
-          </div>
+          <button id="find-match-btn">Find Match (Multiplayer)</button>
           <p id="menu-status" class="status"></p>
+        </div>
+        <div id="lobby-browser" class="prebattle-screen hidden">
+          <h2>Lobby Browser</h2>
+          <div class="lobby-browser-toolbar">
+            <input id="lobby-name-input" placeholder="Lobby name (optional)" />
+            <button id="create-lobby-btn">Create Lobby</button>
+            <button id="lobby-back-btn">Back</button>
+          </div>
+          <div class="join-row">
+            <input id="lobby-join-id-input" placeholder="Game ID to join" />
+            <button id="lobby-join-id-btn">Join by ID</button>
+          </div>
+          <p id="lobby-browser-status" class="status"></p>
+          <table class="lobby-table">
+            <thead>
+              <tr><th>Name</th><th>Players</th><th>Host</th><th></th></tr>
+            </thead>
+            <tbody id="lobby-table-body">
+              <tr><td colspan="4">Loading...</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div id="waiting-room" class="prebattle-screen hidden">
+          <h2 id="waiting-lobby-name">Lobby</h2>
+          <p>Game ID: <code id="waiting-game-id"></code></p>
+          <p id="waiting-players">Waiting for opponent...</p>
+          <button id="waiting-leave-btn">Leave Lobby</button>
+        </div>
+        <div id="loadout-screen" class="prebattle-screen hidden">
+          <h2>Army Loadout</h2>
+          <div class="loadout-budget">
+            <div class="loadout-budget-track"><div id="loadout-budget-bar" class="loadout-budget-fill"></div></div>
+            <span id="loadout-budget-text">0 / 500 points</span>
+          </div>
+          <p id="loadout-opponent-status" class="status"></p>
+          <p id="loadout-status" class="status"></p>
+          <div class="loadout-layout">
+            <section class="panel">
+              <h3>Add Units</h3>
+              <div id="loadout-catalog" class="loadout-catalog"></div>
+            </section>
+            <section class="panel loadout-roster-panel">
+              <h3>Your Army</h3>
+              <div id="loadout-roster"></div>
+            </section>
+          </div>
+          <button id="loadout-ready-btn">Ready</button>
+        </div>
+        <div id="deployment-screen" class="prebattle-screen hidden">
+          <h2>Deployment — <span id="deploy-player-label"></span></h2>
+          <p id="deploy-opponent-status" class="status"></p>
+          <p id="deploy-status" class="status"></p>
+          <div class="deployment-layout">
+            <div class="board-panel deploy-board">
+              <canvas id="deploy-canvas" width="900" height="560"></canvas>
+            </div>
+            <aside class="deploy-side">
+              <section class="panel">
+                <h3>Roster</h3>
+                <div id="deploy-roster-list"></div>
+                <button id="deploy-clear-btn">Clear All</button>
+                <button id="deploy-ready-btn">Ready to Fight</button>
+              </section>
+            </aside>
+          </div>
         </div>
         <div id="game-header" class="game-header hidden">
           <span id="turn-info"></span>
@@ -85,27 +156,77 @@ function renderApp(): void {
   `;
 
   setupMenuHandlers();
+  initPreBattle({
+    getGameId: () => gameId,
+    setGameId: (id) => {
+      gameId = id;
+    },
+    getLocalPlayerId: () => localPlayerId,
+    setLocalPlayerId: (id) => {
+      localPlayerId = id;
+    },
+    getGameState: () => gameState,
+    setGameState: (state) => {
+      gameState = state;
+    },
+    applyGameState,
+    enterBattle: () => {
+      if (!battleUiInitialized) {
+        showGame();
+      } else {
+        document.getElementById('menu-screen')?.classList.add('hidden');
+        document.getElementById('game-header')?.classList.remove('hidden');
+        document.getElementById('game-main')?.classList.remove('hidden');
+        updateUi();
+      }
+    },
+    leaveToMenu: () => {
+      multiplayerSessionActive = false;
+      battleUiInitialized = false;
+      gameId = null;
+      gameState = null;
+      selectedBrigadeId = null;
+      actionMode = { kind: 'none' };
+      location.reload();
+    },
+    ensureStateSubscription: () => {
+      ensureMultiplayerStateHandler();
+    },
+  });
 }
 
 function setupMenuHandlers(): void {
   document.querySelectorAll<HTMLButtonElement>('[data-mode]').forEach((btn) => {
     btn.addEventListener('click', () => {
       const mode = btn.dataset.mode as GameMode;
-      if (mode === 'Multiplayer') {
-        void startMultiplayerCreate();
-      } else {
-        void startGame(mode, mode === 'VsAi' ? 0 : 0);
-      }
+      void startGame(mode, mode === 'VsAi' ? 0 : 0);
     });
   });
 
-  document.getElementById('create-mp-btn')?.addEventListener('click', () => void startMultiplayerCreate());
-  document.getElementById('join-btn')?.addEventListener('click', () => void joinMultiplayer());
   document.getElementById('end-turn-btn')?.addEventListener('click', () => void endTurn());
   document.getElementById('back-menu-btn')?.addEventListener('click', () => location.reload());
 }
 
+function ensureMultiplayerStateHandler(): void {
+  if (multiplayerSessionActive) return;
+  multiplayerSessionActive = true;
+
+  gameClient.setStateHandler((state) => {
+    if (state.phase === 'InProgress' || state.phase === 'Victory') {
+      processCombatEvents(state);
+    }
+    gameState = applyGameState(state);
+
+    if (PRE_BATTLE_PHASES.has(state.phase)) {
+      onPreBattleStateUpdate();
+    } else if (state.phase === 'InProgress' || state.phase === 'Victory') {
+      routeGamePhase();
+    }
+  });
+}
+
 async function startGame(mode: GameMode, playerId: number): Promise<void> {
+  showPreBattleMainMenu();
   setMenuStatus('Creating game...');
   try {
     const result = await gameClient.createGame(mode);
@@ -128,74 +249,40 @@ async function startGame(mode: GameMode, playerId: number): Promise<void> {
   }
 }
 
-async function startMultiplayerCreate(): Promise<void> {
-  setMenuStatus('Creating multiplayer game...');
-  try {
-    const result = await gameClient.createGame('Multiplayer');
-    gameId = result.gameId;
-    localPlayerId = 0;
-    await gameClient.joinGame(gameId, 0);
-    gameState = applyGameState(result.state);
-    setMenuStatus(`Share this Game ID with Player 2: ${gameId}`);
-    showGame();
-  } catch (err) {
-    setMenuStatus(`Failed: ${String(err)}`);
-  }
-}
-
-async function joinMultiplayer(): Promise<void> {
-  const input = document.getElementById('join-id') as HTMLInputElement;
-  const id = input.value.trim();
-  if (!id) {
-    setMenuStatus('Enter a game ID');
-    return;
-  }
-
-  setMenuStatus('Joining...');
-  try {
-    gameId = id;
-    localPlayerId = 1;
-    const join = await gameClient.joinGame(id, 1);
-    if (!join.success) {
-      setMenuStatus(join.error ?? 'Join failed');
-      return;
-    }
-    gameState = applyGameState(join.state!);
-    showGame();
-  } catch (err) {
-    setMenuStatus(`Failed: ${String(err)}`);
-  }
-}
-
 function showGame(): void {
+  battleUiInitialized = true;
   document.getElementById('menu-screen')?.classList.add('hidden');
   document.getElementById('game-header')?.classList.remove('hidden');
   document.getElementById('game-main')?.classList.remove('hidden');
 
   const canvas = document.getElementById('game-canvas') as HTMLCanvasElement;
-  hexRenderer = new HexRenderer(canvas);
-  lastEventLogLength = gameState?.eventLog.length ?? 0;
-  damagePopupEntries = [];
+  if (!hexRenderer) {
+    hexRenderer = new HexRenderer(canvas);
+    lastEventLogLength = gameState?.eventLog.length ?? 0;
+    damagePopupEntries = [];
 
-  gameClient.setStateHandler((state) => {
-    processCombatEvents(state);
-    gameState = applyGameState(state);
-    updateUi();
-  });
-
-  setupCanvasCamera(canvas);
-
-  window.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') {
-      cancelAction(true);
+    if (!multiplayerSessionActive) {
+      gameClient.setStateHandler((state) => {
+        processCombatEvents(state);
+        gameState = applyGameState(state);
+        updateUi();
+      });
     }
-  });
 
-  window.addEventListener('resize', () => {
-    canvas.width = canvas.parentElement?.clientWidth ?? 900;
-    canvas.height = 560;
-    updateUi();
-  });
+    setupCanvasCamera(canvas);
+
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        cancelAction(true);
+      }
+    });
+
+    window.addEventListener('resize', () => {
+      canvas.width = canvas.parentElement?.clientWidth ?? 900;
+      canvas.height = 560;
+      updateUi();
+    });
+  }
 
   updateUi();
 }

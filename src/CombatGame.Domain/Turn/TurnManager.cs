@@ -72,6 +72,11 @@ public static class TurnManager
 
     public static void ApplyUpgradeIfEligible(Brigade brigade, GameState state)
     {
+        if (brigade.FromLoadout)
+        {
+            return;
+        }
+
         foreach (var upgrade in UnitCatalog.GetAvailableUpgrades(brigade))
         {
             if (!brigade.Upgrades.Contains(upgrade))

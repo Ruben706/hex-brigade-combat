@@ -3,6 +3,7 @@ using CombatGame.Domain.Commands;
 using CombatGame.Domain.Combat;
 using CombatGame.Domain.Enums;
 using CombatGame.Domain.Hex;
+using CombatGame.Domain.Lobby;
 using CombatGame.Domain.Maps;
 using CombatGame.Domain.Units;
 
@@ -784,5 +785,140 @@ public class NoMoveAfterFireTests
 
         Assert.False(result.Success);
         Assert.Contains("firing", result.Error!, StringComparison.OrdinalIgnoreCase);
+    }
+}
+
+public class LobbyLoadoutTests
+{
+    private static GameState CreateLobbyWithTwoPlayers()
+    {
+        var state = DefaultSkirmishMap.CreateLobby("Test Lobby", 0);
+        LobbyService.JoinLobby(state, 1);
+        return state;
+    }
+
+    private static List<LoadoutUnit> ValidRoster() =>
+    [
+        new LoadoutUnit { UnitType = UnitType.Infantry, Upgrades = [] },
+        new LoadoutUnit { UnitType = UnitType.Scout, Upgrades = [] }
+    ];
+
+    [Fact]
+    public void Loadout_RejectsOverBudgetRoster()
+    {
+        var roster = new List<LoadoutUnit>
+        {
+            new() { UnitType = UnitType.Tank, Upgrades = [] },
+            new() { UnitType = UnitType.Tank, Upgrades = [] },
+            new() { UnitType = UnitType.Artillery, Upgrades = [] }
+        };
+
+        Assert.False(ArmyBuilder.TryValidateRoster(roster, out var error));
+        Assert.Contains("points", error!, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void Loadout_RejectsIllegalUpgrade()
+    {
+        var roster = new List<LoadoutUnit>
+        {
+            new() { UnitType = UnitType.Scout, Upgrades = [UpgradeType.ReinforcedArmor] }
+        };
+
+        Assert.False(ArmyBuilder.TryValidateRoster(roster, out var error));
+        Assert.Contains("not available", error!, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void Loadout_ReadyFailsForEmptyRoster()
+    {
+        var state = CreateLobbyWithTwoPlayers();
+        Assert.Equal(GamePhase.Loadout, state.Phase);
+
+        var result = LobbyService.SetLoadoutReady(state, 0, true);
+        Assert.False(result.Success);
+    }
+
+    [Fact]
+    public void Phase_TransitionsToDeploymentWhenBothLoadoutsReady()
+    {
+        var state = CreateLobbyWithTwoPlayers();
+        var roster = ValidRoster();
+
+        LobbyService.UpdateLoadout(state, 0, roster);
+        LobbyService.SetLoadoutReady(state, 0, true);
+        LobbyService.UpdateLoadout(state, 1, roster);
+        LobbyService.SetLoadoutReady(state, 1, true);
+
+        Assert.Equal(GamePhase.Deployment, state.Phase);
+    }
+}
+
+public class DeploymentZoneTests
+{
+    private static GameState CreateDeploymentState()
+    {
+        var state = DefaultSkirmishMap.CreateLobby("Deploy", 0);
+        LobbyService.JoinLobby(state, 1);
+        var roster = new List<LoadoutUnit>
+        {
+            new() { UnitType = UnitType.Infantry, Upgrades = [] }
+        };
+        LobbyService.UpdateLoadout(state, 0, roster);
+        LobbyService.SetLoadoutReady(state, 0, true);
+        LobbyService.UpdateLoadout(state, 1, roster);
+        LobbyService.SetLoadoutReady(state, 1, true);
+        return state;
+    }
+
+    [Fact]
+    public void DeployUnit_RejectsTileOutsideZone()
+    {
+        var state = CreateDeploymentState();
+        var outside = new HexCoord(10, 10);
+
+        var result = LobbyService.DeployUnit(state, 0, 0, outside);
+        Assert.False(result.Success);
+        Assert.Contains("deployment zone", result.Error!, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void DeployUnit_AcceptsValidZoneTile()
+    {
+        var state = CreateDeploymentState();
+        var zoneTile = ArmyBuilder.GetDeploymentZoneTiles(0).First(t =>
+            TerrainHelper.IsPassable(state.Grid.GetTerrain(t)));
+
+        var result = LobbyService.DeployUnit(state, 0, 0, zoneTile);
+        Assert.True(result.Success);
+    }
+
+    [Fact]
+    public void DeploymentReady_RequiresAllUnitsPlaced()
+    {
+        var state = CreateDeploymentState();
+        var result = LobbyService.SetDeploymentReady(state, 0, true);
+        Assert.False(result.Success);
+        Assert.Contains("Place all", result.Error!, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void Battle_StartsWithLoadoutBrigadesAtDeployedPositions()
+    {
+        var state = CreateDeploymentState();
+        var zone0 = ArmyBuilder.GetDeploymentZoneTiles(0).First(t =>
+            TerrainHelper.IsPassable(state.Grid.GetTerrain(t)));
+        var zone1 = ArmyBuilder.GetDeploymentZoneTiles(1).First(t =>
+            TerrainHelper.IsPassable(state.Grid.GetTerrain(t)));
+
+        LobbyService.DeployUnit(state, 0, 0, zone0);
+        LobbyService.SetDeploymentReady(state, 0, true);
+        LobbyService.DeployUnit(state, 1, 0, zone1);
+        LobbyService.SetDeploymentReady(state, 1, true);
+
+        Assert.Equal(GamePhase.InProgress, state.Phase);
+        Assert.Equal(2, state.Brigades.Count);
+        Assert.Contains(state.Brigades, b => b.PlayerId == 0 && b.Position == zone0 && b.FromLoadout);
+        Assert.Contains(state.Brigades, b => b.PlayerId == 1 && b.Position == zone1 && b.FromLoadout);
     }
 }

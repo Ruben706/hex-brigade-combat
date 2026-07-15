@@ -15,6 +15,11 @@ public static class GameEngine
             return CommandResult.Fail("Game is over.");
         }
 
+        if (state.Phase != GamePhase.InProgress)
+        {
+            return CommandResult.Fail("Battle has not started yet.");
+        }
+
         if (command.PlayerId != state.CurrentPlayerId)
         {
             return CommandResult.Fail("Not your turn.");

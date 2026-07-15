@@ -1,5 +1,6 @@
 import * as signalR from '@microsoft/signalr';
-import type { GameCommandDto, GameMode, GameStateDto } from '../types/game';
+import type { GameCommandDto, GameMode, GameStateDto, LobbySummary } from '../types/game';
+import type { LoadoutUnit } from '../map/armyBuilder';
 
 const hubUrl = import.meta.env.VITE_HUB_URL || '/hub/game';
 
@@ -38,12 +39,81 @@ export class GameClient {
     return result;
   }
 
+  async createLobby(
+    lobbyName: string,
+    playerId: number,
+  ): Promise<{ gameId: string; state: GameStateDto }> {
+    await this.connect();
+    return this.connection.invoke('CreateLobby', lobbyName, playerId);
+  }
+
+  async listLobbies(): Promise<LobbySummary[]> {
+    await this.connect();
+    const result = await this.connection.invoke<{ lobbies: LobbySummary[] }>('ListLobbies');
+    return result.lobbies ?? [];
+  }
+
   async joinGame(
     gameId: string,
     playerId: number,
   ): Promise<{ success: boolean; error?: string; state?: GameStateDto }> {
     await this.connect();
     return this.connection.invoke('JoinGame', gameId, playerId);
+  }
+
+  async updateLoadout(
+    gameId: string,
+    playerId: number,
+    roster: LoadoutUnit[],
+  ): Promise<{ success: boolean; error?: string; state?: GameStateDto }> {
+    await this.connect();
+    return this.connection.invoke('UpdateLoadout', gameId, playerId, roster);
+  }
+
+  async setLoadoutReady(
+    gameId: string,
+    playerId: number,
+    ready: boolean,
+  ): Promise<{ success: boolean; error?: string; state?: GameStateDto }> {
+    await this.connect();
+    return this.connection.invoke('SetLoadoutReady', gameId, playerId, ready);
+  }
+
+  async deployUnit(
+    gameId: string,
+    playerId: number,
+    rosterIndex: number,
+    q: number,
+    r: number,
+  ): Promise<{ success: boolean; error?: string; state?: GameStateDto }> {
+    await this.connect();
+    return this.connection.invoke('DeployUnit', gameId, playerId, rosterIndex, q, r);
+  }
+
+  async clearDeployment(
+    gameId: string,
+    playerId: number,
+    rosterIndex?: number,
+  ): Promise<{ success: boolean; error?: string; state?: GameStateDto }> {
+    await this.connect();
+    return this.connection.invoke('ClearDeployment', gameId, playerId, rosterIndex ?? null);
+  }
+
+  async setDeploymentReady(
+    gameId: string,
+    playerId: number,
+    ready: boolean,
+  ): Promise<{ success: boolean; error?: string; state?: GameStateDto }> {
+    await this.connect();
+    return this.connection.invoke('SetDeploymentReady', gameId, playerId, ready);
+  }
+
+  async leaveLobby(
+    gameId: string,
+    playerId: number,
+  ): Promise<{ success: boolean; error?: string; state?: GameStateDto }> {
+    await this.connect();
+    return this.connection.invoke('LeaveLobby', gameId, playerId);
   }
 
   async sendCommand(
