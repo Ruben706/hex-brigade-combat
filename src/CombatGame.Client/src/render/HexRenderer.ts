@@ -1,6 +1,14 @@
 import type { BrigadeDto, GameStateDto } from '../types/game';
 import { PLAYER_COLORS, TERRAIN_COLORS, UNIT_LABELS } from '../types/game';
-import { eachOffsetHex, isOnOffsetGrid, isOnOffsetGridCoord, offsetToAxial } from '../map/hexOffset';
+import {
+  axialToOffset,
+  eachOffsetHex,
+  isOnOffsetGrid,
+  isOnOffsetGridCoord,
+  offsetDistance,
+  offsetNeighbor,
+  offsetWithinRange,
+} from '../map/hexOffset';
 import { isBrigadeVisible, isHexVisible } from '../vision/fogOfWar';
 
 export interface HexCoord {
@@ -76,8 +84,9 @@ export class HexRenderer {
     return { x: x + this.offsetX, y: y + this.offsetY };
   }
 
+  /** q = column, r = row (odd-r offset). Odd rows are shifted half a hex right. */
   private hexToPixelUncentered(q: number, r: number): { x: number; y: number } {
-    const x = this.hexSize * (Math.sqrt(3) * q + (Math.sqrt(3) / 2) * r);
+    const x = this.hexSize * Math.sqrt(3) * (q + 0.5 * (r & 1));
     const y = this.hexSize * ((3 / 2) * r);
     return { x, y };
   }
@@ -85,25 +94,27 @@ export class HexRenderer {
   pixelToHex(x: number, y: number): HexCoord {
     const px = x - this.offsetX;
     const py = y - this.offsetY;
-    const q = ((Math.sqrt(3) / 3) * px - (1 / 3) * py) / this.hexSize;
-    const r = ((2 / 3) * py) / this.hexSize;
-    return axialRound(q, r);
+    const aq = ((Math.sqrt(3) / 3) * px - (1 / 3) * py) / this.hexSize;
+    const ar = ((2 / 3) * py) / this.hexSize;
+    const rounded = axialRound(aq, ar);
+    const { col, row } = axialToOffset(rounded.q, rounded.r);
+    return { q: col, r: row };
   }
 
   syncLayout(gridWidth: number, gridHeight: number): void {
     this.gridWidth = gridWidth;
     this.gridHeight = gridHeight;
 
-    const fitWidth = (this.width - 40) / (gridWidth * Math.sqrt(3));
+    const fitWidth = (this.width - 40) / ((gridWidth + 0.5) * Math.sqrt(3));
     const fitHeight = (this.height - 40) / (gridHeight * 1.5);
     this.hexSize = Math.max(18, Math.min(DEFAULT_HEX_SIZE, Math.floor(Math.min(fitWidth, fitHeight))));
 
     const corners = [
-      offsetToAxial(0, 0),
-      offsetToAxial(gridWidth - 1, 0),
-      offsetToAxial(0, gridHeight - 1),
-      offsetToAxial(gridWidth - 1, gridHeight - 1),
-    ].map(({ q, r }) => this.hexToPixelUncentered(q, r));
+      this.hexToPixelUncentered(0, 0),
+      this.hexToPixelUncentered(gridWidth - 1, 0),
+      this.hexToPixelUncentered(0, gridHeight - 1),
+      this.hexToPixelUncentered(gridWidth - 1, gridHeight - 1),
+    ];
 
     const minX = Math.min(...corners.map((c) => c.x));
     const maxX = Math.max(...corners.map((c) => c.x));
@@ -352,19 +363,11 @@ function axialRound(q: number, r: number): HexCoord {
 }
 
 export function hexDistance(a: HexCoord, b: HexCoord): number {
-  return (Math.abs(a.q - b.q) + Math.abs(a.q + a.r - b.q - b.r) + Math.abs(a.r - b.r)) / 2;
+  return offsetDistance(a, b);
 }
 
 export function getNeighbors(q: number, r: number): HexCoord[] {
-  const directions = [
-    [1, 0],
-    [1, -1],
-    [0, -1],
-    [-1, 0],
-    [-1, 1],
-    [0, 1],
-  ];
-  return directions.map(([dq, dr]) => ({ q: q + dq, r: r + dr }));
+  return [0, 1, 2, 3, 4, 5].map((dir) => offsetNeighbor({ q, r }, dir));
 }
 
 export function getReachableHexes(
@@ -423,13 +426,5 @@ export function getReachableHexes(
 }
 
 export function withinRange(q: number, r: number, range: number): HexCoord[] {
-  const results: HexCoord[] = [];
-  for (let dq = -range; dq <= range; dq++) {
-    const r1 = Math.max(-range, -dq - range);
-    const r2 = Math.min(range, -dq + range);
-    for (let dr = r1; dr <= r2; dr++) {
-      results.push({ q: q + dq, r: r + dr });
-    }
-  }
-  return results;
+  return offsetWithinRange({ q, r }, range);
 }

@@ -5,10 +5,6 @@ const PROJECT_ID = process.env.APPWRITE_PROJECT_ID ?? '6a574b63000d15c7e337';
 const API_KEY = process.env.APPWRITE_API_KEY;
 const FUNCTION_ID = 'game-api';
 
-function offsetToAxial(col, row) {
-  return { q: col - (row - (row & 1)) / 2, r: row };
-}
-
 async function invoke(body) {
   const client = new Client().setEndpoint(ENDPOINT).setProject(PROJECT_ID).setKey(API_KEY);
   const functions = new Functions(client);
@@ -27,9 +23,9 @@ async function main() {
   if (!created.success) throw new Error(created.error);
   const gameId = created.gameId;
   const tank = created.state.brigades.find((b) => b.unitType === 'Tank' && b.playerId === 0);
-  const start = offsetToAxial(3, 7);
-  const target = offsetToAxial(0, 7);
 
+  // Coordinates are odd-r offset: q = column, r = row. Tank spawns at (0,6).
+  const target = { q: 0, r: 5 };
   const move = await invoke({
     action: 'sendCommand',
     gameId,

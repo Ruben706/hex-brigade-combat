@@ -2,8 +2,12 @@ import type { HexCoord } from '../render/HexRenderer';
 
 export const DEFAULT_MAP_SIZE = 16;
 
-/** Odd-r offset layout for a visually rectangular pointy-top hex grid. */
-export function offsetToAxial(col: number, row: number): HexCoord {
+/**
+ * Coordinates are odd-r offset: q = column, r = row, both in [0, size).
+ * Axial coordinates only appear internally for hex math.
+ */
+
+export function offsetToAxial(col: number, row: number): { q: number; r: number } {
   return { q: col - (row - (row & 1)) / 2, r: row };
 }
 
@@ -25,12 +29,46 @@ export function isOnOffsetGrid(
   if (!Number.isFinite(q) || !Number.isFinite(r)) return false;
   const w = normalizeGridDimension(width, fallbackSize);
   const h = normalizeGridDimension(height, fallbackSize);
-  const { col, row } = axialToOffset(q, r);
-  return col >= 0 && col < w && row >= 0 && row < h;
+  return q >= 0 && q < w && r >= 0 && r < h;
 }
 
 export function isOnOffsetGridCoord(hex: HexCoord, width: number, height: number): boolean {
   return isOnOffsetGrid(hex.q, hex.r, width, height);
+}
+
+const EVEN_ROW_DIRS = [
+  [1, 0], [0, -1], [-1, -1], [-1, 0], [-1, 1], [0, 1],
+] as const;
+const ODD_ROW_DIRS = [
+  [1, 0], [1, -1], [0, -1], [-1, 0], [0, 1], [1, 1],
+] as const;
+
+export function offsetNeighbor(hex: HexCoord, dir: number): HexCoord {
+  const dirs = (hex.r & 1) === 0 ? EVEN_ROW_DIRS : ODD_ROW_DIRS;
+  const [dq, dr] = dirs[dir % 6];
+  return { q: hex.q + dq, r: hex.r + dr };
+}
+
+export function offsetDistance(a: HexCoord, b: HexCoord): number {
+  const a1 = offsetToAxial(a.q, a.r);
+  const b1 = offsetToAxial(b.q, b.r);
+  const s1 = -a1.q - a1.r;
+  const s2 = -b1.q - b1.r;
+  return (Math.abs(a1.q - b1.q) + Math.abs(a1.r - b1.r) + Math.abs(s1 - s2)) / 2;
+}
+
+export function offsetWithinRange(center: HexCoord, range: number): HexCoord[] {
+  const axial = offsetToAxial(center.q, center.r);
+  const results: HexCoord[] = [];
+  for (let dq = -range; dq <= range; dq++) {
+    const r1 = Math.max(-range, -dq - range);
+    const r2 = Math.min(range, -dq + range);
+    for (let dr = r1; dr <= r2; dr++) {
+      const { col, row } = axialToOffset(axial.q + dq, axial.r + dr);
+      results.push({ q: col, r: row });
+    }
+  }
+  return results;
 }
 
 export function eachOffsetHex(
@@ -40,7 +78,7 @@ export function eachOffsetHex(
 ): void {
   for (let row = 0; row < height; row++) {
     for (let col = 0; col < width; col++) {
-      fn(col, row, offsetToAxial(col, row));
+      fn(col, row, { q: col, r: row });
     }
   }
 }

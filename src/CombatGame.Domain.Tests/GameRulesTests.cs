@@ -475,7 +475,7 @@ public class TerrainTests
         Assert.Equal(16, state.Grid.Height);
     }
     [Fact]
-    public void CanMove_ToOffsetGridTile_WithNegativeAxialQ()
+    public void CanMove_ToFirstColumn()
     {
         var state = DefaultSkirmishMap.Create(GameMode.Hotseat);
         var tank = state.Brigades.First(b => b.UnitType == UnitType.Tank && b.PlayerId == 0);
@@ -484,7 +484,7 @@ public class TerrainTests
         tank.Position = start;
         TestMapHelper.SetPlains(state, start, target, HexOffset.FromOddR(1, 7), HexOffset.FromOddR(2, 7));
 
-        Assert.Equal(-3, target.Q);
+        Assert.Equal(0, target.Q);
 
         var result = GameEngine.Execute(state, new GameCommand
         {
@@ -502,10 +502,27 @@ public class TerrainTests
     {
         var state = DefaultSkirmishMap.Create(GameMode.Hotseat);
 
-        Assert.True(state.Grid.Contains(HexOffset.FromOddR(0, 15)));
-        Assert.True(state.Grid.Contains(HexOffset.FromOddR(15, 0)));
-        Assert.Equal(-7, HexOffset.FromOddR(0, 15).Q);
-        Assert.Equal(15, HexOffset.FromOddR(15, 0).Q);
+        Assert.True(state.Grid.Contains(new HexCoord(0, 15)));
+        Assert.True(state.Grid.Contains(new HexCoord(15, 0)));
+        Assert.True(state.Grid.Contains(new HexCoord(0, 0)));
+        Assert.True(state.Grid.Contains(new HexCoord(15, 15)));
+        Assert.False(state.Grid.Contains(new HexCoord(-1, 7)));
+        Assert.False(state.Grid.Contains(new HexCoord(16, 7)));
+    }
+
+    [Fact]
+    public void OffsetNeighbors_AreAdjacentAndParityAware()
+    {
+        // Even row
+        var even = new HexCoord(5, 6);
+        // Odd row
+        var odd = new HexCoord(5, 7);
+
+        for (var d = 0; d < 6; d++)
+        {
+            Assert.Equal(1, even.DistanceTo(even.Neighbor(d)));
+            Assert.Equal(1, odd.DistanceTo(odd.Neighbor(d)));
+        }
     }
 
     [Fact]

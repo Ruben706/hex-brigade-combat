@@ -4,7 +4,8 @@ import { generateMap, MAP_SIZE } from './mapGenerator.js';
 import {
   hasCompleteOffsetTileSet,
   isOnOffsetGrid,
-  offsetToAxial,
+  offsetDistance,
+  offsetNeighbor,
 } from './hexOffset.js';
 import {
   type TileMap,
@@ -214,24 +215,18 @@ export function syncGridDimensions(state: InternalGameState): void {
 }
 
 // --- Hex ---
-
-const HEX_DIRS = [
-  [1, 0], [1, -1], [0, -1], [-1, 0], [-1, 1], [0, 1],
-] as const;
+// Coordinates are odd-r offset (q = column, r = row); math delegates to hexOffset.
 
 export function hexKey(c: HexCoord): string {
   return `${c.q},${c.r}`;
 }
 
 export function hexDistance(a: HexCoord, b: HexCoord): number {
-  const s1 = -a.q - a.r;
-  const s2 = -b.q - b.r;
-  return (Math.abs(a.q - b.q) + Math.abs(a.r - b.r) + Math.abs(s1 - s2)) / 2;
+  return offsetDistance(a, b);
 }
 
 export function hexNeighbor(c: HexCoord, dir: number): HexCoord {
-  const [dq, dr] = HEX_DIRS[dir % 6];
-  return { q: c.q + dq, r: c.r + dr };
+  return offsetNeighbor(c, dir);
 }
 
 class SeededRng {
@@ -608,18 +603,18 @@ export function hashGameId(gameId: string): number {
 
 const PLAYER_SPAWNS: Record<number, HexCoord[]> = {
   0: [
-    offsetToAxial(1, 7),
-    offsetToAxial(2, 8),
-    offsetToAxial(0, 6),
-    offsetToAxial(0, 9),
-    offsetToAxial(1, 10),
+    { q: 1, r: 7 },
+    { q: 2, r: 8 },
+    { q: 0, r: 6 },
+    { q: 0, r: 9 },
+    { q: 1, r: 10 },
   ],
   1: [
-    offsetToAxial(14, 7),
-    offsetToAxial(13, 8),
-    offsetToAxial(15, 6),
-    offsetToAxial(15, 9),
-    offsetToAxial(14, 10),
+    { q: 14, r: 7 },
+    { q: 13, r: 8 },
+    { q: 15, r: 6 },
+    { q: 15, r: 9 },
+    { q: 14, r: 10 },
   ],
 };
 
@@ -764,12 +759,12 @@ export function createSkirmish(mode: GameMode): InternalGameState {
   };
 
   const p0: Array<[UnitType, HexCoord]> = [
-    ['Scout', offsetToAxial(1, 7)], ['Infantry', offsetToAxial(2, 8)],
-    ['Tank', offsetToAxial(0, 6)], ['Artillery', offsetToAxial(0, 9)], ['AntiTank', offsetToAxial(1, 10)],
+    ['Scout', { q: 1, r: 7 }], ['Infantry', { q: 2, r: 8 }],
+    ['Tank', { q: 0, r: 6 }], ['Artillery', { q: 0, r: 9 }], ['AntiTank', { q: 1, r: 10 }],
   ];
   const p1: Array<[UnitType, HexCoord]> = [
-    ['Scout', offsetToAxial(14, 7)], ['Infantry', offsetToAxial(13, 8)],
-    ['Tank', offsetToAxial(15, 6)], ['Artillery', offsetToAxial(15, 9)], ['AntiTank', offsetToAxial(14, 10)],
+    ['Scout', { q: 14, r: 7 }], ['Infantry', { q: 13, r: 8 }],
+    ['Tank', { q: 15, r: 6 }], ['Artillery', { q: 15, r: 9 }], ['AntiTank', { q: 14, r: 10 }],
   ];
   for (const [t, pos] of p0) state.brigades.push(createBrigade(t, 0, pos));
   for (const [t, pos] of p1) state.brigades.push(createBrigade(t, 1, pos));

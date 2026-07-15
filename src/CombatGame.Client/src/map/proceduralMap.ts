@@ -1,5 +1,5 @@
 import type { TileDto } from '../types/game';
-import { offsetToAxial, axialToOffset } from './hexOffset';
+import { isOnOffsetGrid, offsetNeighbor, offsetWithinRange } from './hexOffset';
 
 export const MAP_SIZE = 16;
 
@@ -39,32 +39,18 @@ class SeededRng {
   }
 }
 
-function withinRange(center: HexCoord, range: number): HexCoord[] {
-  const results: HexCoord[] = [];
-  for (let dq = -range; dq <= range; dq++) {
-    const r1 = Math.max(-range, -dq - range);
-    const r2 = Math.min(range, -dq + range);
-    for (let dr = r1; dr <= r2; dr++) {
-      results.push({ q: center.q + dq, r: center.r + dr });
-    }
-  }
-  return results;
-}
-
 function isInSpawnZone(hex: HexCoord): boolean {
-  const { col, row } = axialToOffset(hex.q, hex.r);
-  return (col <= 2 || col >= MAP_SIZE - 3) && row >= 4 && row <= 12;
+  return (hex.q <= 2 || hex.q >= MAP_SIZE - 3) && hex.r >= 4 && hex.r <= 12;
 }
 
 function isOnGrid(hex: HexCoord): boolean {
-  const { col, row } = axialToOffset(hex.q, hex.r);
-  return col >= 0 && col < MAP_SIZE && row >= 0 && row < MAP_SIZE;
+  return isOnOffsetGrid(hex.q, hex.r, MAP_SIZE, MAP_SIZE);
 }
 
 function clearRect(tiles: TileMap, colMin: number, colMax: number, rowMin: number, rowMax: number): void {
   for (let row = rowMin; row <= rowMax && row < MAP_SIZE; row++) {
     for (let col = colMin; col <= colMax && col < MAP_SIZE; col++) {
-      tiles[hexKey(offsetToAxial(col, row))] = 'Plains';
+      tiles[hexKey({ q: col, r: row })] = 'Plains';
     }
   }
 }
@@ -77,7 +63,7 @@ function paintBlob(
   rng: SeededRng,
   density: number,
 ): void {
-  for (const hex of withinRange(center, radius)) {
+  for (const hex of offsetWithinRange(center, radius)) {
     if (!isOnGrid(hex)) continue;
     if (isInSpawnZone(hex)) continue;
 
@@ -102,7 +88,7 @@ function paintBlob(
 }
 
 function randomCoord(rng: SeededRng, min: number, max: number): HexCoord {
-  return offsetToAxial(rng.nextInt(min, max), rng.nextInt(min, max));
+  return { q: rng.nextInt(min, max), r: rng.nextInt(min, max) };
 }
 
 export function hashGameId(gameId: string): number {
@@ -115,13 +101,13 @@ export function generateMap(seed: number): TileMap {
 
   for (let row = 0; row < MAP_SIZE; row++) {
     for (let col = 0; col < MAP_SIZE; col++) {
-      tiles[hexKey(offsetToAxial(col, row))] = 'Plains';
+      tiles[hexKey({ q: col, r: row })] = 'Plains';
     }
   }
 
-  paintBlob(tiles, offsetToAxial(8, 8), 'Mountain', 2, rng, 0.65);
-  paintBlob(tiles, offsetToAxial(7, 5), 'Mountain', 2, rng, 0.55);
-  paintBlob(tiles, offsetToAxial(9, 11), 'Mountain', 1, rng, 0.7);
+  paintBlob(tiles, { q: 8, r: 8 }, 'Mountain', 2, rng, 0.65);
+  paintBlob(tiles, { q: 7, r: 5 }, 'Mountain', 2, rng, 0.55);
+  paintBlob(tiles, { q: 9, r: 11 }, 'Mountain', 1, rng, 0.7);
 
   for (let i = 0; i < 6; i++) {
     paintBlob(tiles, randomCoord(rng, 4, 11), 'DeepWater', rng.nextInt(1, 2), rng, 0.45);
@@ -130,11 +116,8 @@ export function generateMap(seed: number): TileMap {
   for (const key of Object.keys(tiles)) {
     if (tiles[key] !== 'DeepWater') continue;
     const [q, r] = key.split(',').map(Number);
-    const dirs = [
-      [1, 0], [1, -1], [0, -1], [-1, 0], [-1, 1], [0, 1],
-    ] as const;
-    for (const [dq, dr] of dirs) {
-      const n = { q: q + dq, r: r + dr };
+    for (let d = 0; d < 6; d++) {
+      const n = offsetNeighbor({ q, r }, d);
       if (!isOnGrid(n)) continue;
       const nKey = hexKey(n);
       if (tiles[nKey] === 'Plains' && rng.next() < 0.55) {
