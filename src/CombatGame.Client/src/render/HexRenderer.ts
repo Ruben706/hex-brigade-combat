@@ -40,6 +40,211 @@ const BRIGADE_HIT_SCALE = 0.85;
 const MIN_ZOOM = 0.45;
 const MAX_ZOOM = 3.5;
 const ZOOM_WHEEL_FACTOR = 1.12;
+const MOVE_FILL = 'rgba(90, 170, 255, 0.2)';
+const MOVE_CONTOUR = '#8fd3ff';
+const MOVE_CONTOUR_GLOW = 'rgba(90, 170, 255, 0.35)';
+const ATTACK_RANGE_FILL = 'rgba(255, 180, 90, 0.18)';
+const ATTACK_RANGE_CONTOUR = '#ffc866';
+const ATTACK_RANGE_GLOW = 'rgba(255, 200, 100, 0.4)';
+const ATTACK_TARGET_FILL = 'rgba(255, 90, 90, 0.32)';
+
+interface BoundarySegment {
+  x1: number;
+  y1: number;
+  x2: number;
+  y2: number;
+  horizontal: boolean;
+}
+
+function hexKey(q: number, r: number): string {
+  return `${q},${r}`;
+}
+
+/** Collect exterior edges of a tile region in world space, merged across tile gaps. */
+function collectRegionBoundarySegments(
+  hexes: HexCoord[],
+  tileSize: number,
+  gap: number,
+): BoundarySegment[] {
+  const keys = new Set(hexes.map((h) => hexKey(h.q, h.r)));
+  const stride = tileSize + gap;
+  const segments: BoundarySegment[] = [];
+
+  for (const { q, r } of hexes) {
+    const x0 = q * stride;
+    const y0 = r * stride;
+    const x1 = x0 + tileSize;
+    const y1 = y0 + tileSize;
+
+    if (!keys.has(hexKey(q, r - 1))) {
+      segments.push({ x1: x0, y1: y0, x2: x1, y2: y0, horizontal: true });
+    }
+    if (!keys.has(hexKey(q, r + 1))) {
+      segments.push({ x1: x0, y1: y1, x2: x1, y2: y1, horizontal: true });
+    }
+    if (!keys.has(hexKey(q - 1, r))) {
+      segments.push({ x1: x0, y1: y0, x2: x0, y2: y1, horizontal: false });
+    }
+    if (!keys.has(hexKey(q + 1, r))) {
+      segments.push({ x1: x1, y1: y0, x2: x1, y2: y1, horizontal: false });
+    }
+  }
+
+  return mergeBoundarySegments(segments, gap);
+}
+
+function mergeBoundarySegments(segments: BoundarySegment[], gap: number): BoundarySegment[] {
+  const horizontal = new Map<number, BoundarySegment[]>();
+  const vertical = new Map<number, BoundarySegment[]>();
+
+  for (const segment of segments) {
+    if (segment.horizontal) {
+      const y = segment.y1;
+      const list = horizontal.get(y) ?? [];
+      list.push({
+        x1: Math.min(segment.x1, segment.x2),
+        y1: y,
+        x2: Math.max(segment.x1, segment.x2),
+        y2: y,
+        horizontal: true,
+      });
+      horizontal.set(y, list);
+    } else {
+      const x = segment.x1;
+      const list = vertical.get(x) ?? [];
+      list.push({
+        x1: x,
+        y1: Math.min(segment.y1, segment.y2),
+        x2: x,
+        y2: Math.max(segment.y1, segment.y2),
+        horizontal: false,
+      });
+      vertical.set(x, list);
+    }
+  }
+
+  const merged: BoundarySegment[] = [];
+  for (const [y, list] of horizontal) {
+    merged.push(...mergeCollinearSegments(list, gap, true, y));
+  }
+  for (const [x, list] of vertical) {
+    merged.push(...mergeCollinearSegments(list, gap, false, x));
+  }
+  return merged;
+}
+
+function mergeCollinearSegments(
+  segments: BoundarySegment[],
+  gap: number,
+  horizontal: boolean,
+  fixedCoord: number,
+): BoundarySegment[] {
+  const sorted = [...segments].sort((a, b) => (horizontal ? a.x1 - b.x1 : a.y1 - b.y1));
+  if (sorted.length === 0) return [];
+
+  const merged: BoundarySegment[] = [];
+  let current = sorted[0]!;
+
+  for (let i = 1; i < sorted.length; i++) {
+    const next = sorted[i]!;
+    const currentEnd = horizontal ? current.x2 : current.y2;
+    const nextStart = horizontal ? next.x1 : next.y1;
+
+    if (nextStart <= currentEnd + gap + 0.001) {
+      if (horizontal) {
+        current = { ...current, x2: Math.max(current.x2, next.x2) };
+      } else {
+        current = { ...current, y2: Math.max(current.y2, next.y2) };
+      }
+    } else {
+      merged.push(
+        horizontal
+          ? { x1: current.x1, y1: fixedCoord, x2: current.x2, y2: fixedCoord, horizontal: true }
+          : { x1: fixedCoord, y1: current.y1, x2: fixedCoord, y2: current.y2, horizontal: false },
+      );
+      current = next;
+    }
+  }
+
+  merged.push(
+    horizontal
+      ? { x1: current.x1, y1: fixedCoord, x2: current.x2, y2: fixedCoord, horizontal: true }
+      : { x1: fixedCoord, y1: current.y1, x2: fixedCoord, y2: current.y2, horizontal: false },
+  );
+  return merged;
+}
+
+function segmentEndpoints(segment: BoundarySegment): [[number, number], [number, number]] {
+  return [
+    [segment.x1, segment.y1],
+    [segment.x2, segment.y2],
+  ];
+}
+
+function pointsEqual(a: [number, number], b: [number, number], epsilon = 0.001): boolean {
+  return Math.abs(a[0] - b[0]) <= epsilon && Math.abs(a[1] - b[1]) <= epsilon;
+}
+
+function turnAngle(
+  prev: [number, number],
+  tip: [number, number],
+  next: [number, number],
+): number {
+  const v1x = tip[0] - prev[0];
+  const v1y = tip[1] - prev[1];
+  const v2x = next[0] - tip[0];
+  const v2y = next[1] - tip[1];
+  return Math.atan2(v1x * v2y - v1y * v2x, v1x * v2x + v1y * v2y);
+}
+
+/** Stitch merged boundary segments into closed loops (counter-clockwise). */
+function traceBoundaryLoops(segments: BoundarySegment[]): [number, number][][] {
+  const unused = new Set(segments);
+  const loops: [number, number][][] = [];
+
+  while (unused.size > 0) {
+    const startSegment = unused.values().next().value!;
+    unused.delete(startSegment);
+
+    const loop: [number, number][] = [[startSegment.x1, startSegment.y1], [startSegment.x2, startSegment.y2]];
+    let prev = loop[0]!;
+    let tip = loop[1]!;
+
+    while (!pointsEqual(tip, loop[0]!)) {
+      let bestSegment: BoundarySegment | null = null;
+      let bestNext: [number, number] | null = null;
+      let bestTurn = Infinity;
+
+      for (const candidate of unused) {
+        const [a, b] = segmentEndpoints(candidate);
+        for (const nextTip of [a, b]) {
+          if (!pointsEqual(nextTip, tip)) continue;
+          const nextEnd = pointsEqual(nextTip, a) ? b : a;
+          const angle = turnAngle(prev, tip, nextEnd);
+          const normalized = angle <= 0 ? angle + Math.PI * 2 : angle;
+          if (normalized < bestTurn) {
+            bestTurn = normalized;
+            bestSegment = candidate;
+            bestNext = nextEnd;
+          }
+        }
+      }
+
+      if (!bestSegment || !bestNext) break;
+
+      unused.delete(bestSegment);
+      loop.push(bestNext);
+      prev = tip;
+      tip = bestNext;
+    }
+
+    if (loop.length >= 3) {
+      loops.push(loop);
+    }
+  }
+
+  return loops;
+}
 
 function terrainMovementCost(terrain: string): number {
   switch (terrain) {
@@ -266,15 +471,19 @@ export class HexRenderer {
       const terrain = options.terrain.get(`${q},${r}`) ?? 'Plains';
       const baseFill = TERRAIN_COLORS[terrain] ?? '#2a3d52';
       const isMove = visible && options.highlightHexes.some((h) => h.q === q && h.r === r);
-      const isAttack = visible && options.attackHexes.some((h) => h.q === q && h.r === r);
-      const fill = visible
-        ? isMove
-          ? '#3d6b4f'
-          : isAttack
-            ? '#6b3d3d'
-            : baseFill
-        : '#141a22';
+      const isAttackTarget = visible && options.attackHexes.some((h) => h.q === q && h.r === r);
+      const isInAttackRange = visible && options.rangeHexes.some((h) => h.q === q && h.r === r);
+      const fill = visible ? baseFill : '#141a22';
       this.drawTile(q, r, '#1e2a3a', fill, visible ? '#2a3d52' : '#0f1419');
+      if (visible && isInAttackRange) {
+        this.drawTileOverlay(q, r, ATTACK_RANGE_FILL);
+      }
+      if (visible && isMove) {
+        this.drawTileOverlay(q, r, MOVE_FILL);
+      }
+      if (visible && isAttackTarget) {
+        this.drawTileOverlay(q, r, ATTACK_TARGET_FILL);
+      }
     });
 
     if (fogEnabled) {
@@ -285,11 +494,15 @@ export class HexRenderer {
       });
     }
 
-    for (const hex of options.rangeHexes) {
-      if (!fogEnabled || isHexVisible(options.visibleHexes!, hex)) {
-        this.drawTileOutline(hex.q, hex.r, '#ffd166', 3);
-      }
-    }
+    const visibleMoveHexes = options.highlightHexes.filter(
+      (hex) => !fogEnabled || isHexVisible(options.visibleHexes!, hex),
+    );
+    this.drawRegionContour(visibleMoveHexes, MOVE_CONTOUR, MOVE_CONTOUR_GLOW);
+
+    const visibleRangeHexes = options.rangeHexes.filter(
+      (hex) => !fogEnabled || isHexVisible(options.visibleHexes!, hex),
+    );
+    this.drawRegionContour(visibleRangeHexes, ATTACK_RANGE_CONTOUR, ATTACK_RANGE_GLOW);
 
     for (const brigade of state.brigades) {
       if (
@@ -333,11 +546,42 @@ export class HexRenderer {
     this.ctx.fillRect(x, y, size, size);
   }
 
-  private drawTileOutline(q: number, r: number, stroke: string, lineWidth: number): void {
+  private drawTileOverlay(q: number, r: number, fill: string): void {
     const { x, y, size } = this.tileRect(q, r);
+    this.ctx.fillStyle = fill;
+    this.ctx.fillRect(x, y, size, size);
+  }
+
+  private drawRegionContour(hexes: HexCoord[], stroke: string, glow: string): void {
+    if (hexes.length === 0) return;
+
+    const segments = collectRegionBoundarySegments(hexes, this.fitTileSize, TILE_GAP);
+    const loops = traceBoundaryLoops(segments);
+    if (loops.length === 0) return;
+
+    const lineWidth = Math.max(2, 2.5 * this.scale);
+
+    this.ctx.save();
+    this.ctx.lineJoin = 'round';
+    this.ctx.lineCap = 'round';
     this.ctx.strokeStyle = stroke;
     this.ctx.lineWidth = lineWidth;
-    this.ctx.strokeRect(x + 0.5, y + 0.5, size - 1, size - 1);
+    this.ctx.shadowColor = glow;
+    this.ctx.shadowBlur = 5 * this.scale;
+
+    for (const loop of loops) {
+      this.ctx.beginPath();
+      const start = this.worldToScreen(loop[0]![0], loop[0]![1]);
+      this.ctx.moveTo(start.x, start.y);
+      for (let i = 1; i < loop.length; i++) {
+        const point = this.worldToScreen(loop[i]![0], loop[i]![1]);
+        this.ctx.lineTo(point.x, point.y);
+      }
+      this.ctx.closePath();
+      this.ctx.stroke();
+    }
+
+    this.ctx.restore();
   }
 
   private drawBrigade(brigade: BrigadeDto, selected: boolean): void {

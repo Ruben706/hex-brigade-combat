@@ -435,6 +435,7 @@ function computeHighlights(
   if (actionMode.kind === 'weapon') {
     for (const hex of withinRange(brigade.q, brigade.r, actionMode.range)) {
       if (!isHexVisible(visibleHexes, hex)) continue;
+      rangeHexes.push(hex);
       const target = gameState.brigades.find((b) => b.q === hex.q && b.r === hex.r);
       if (target && target.playerId !== brigade.playerId) {
         attackHexes.push(hex);
