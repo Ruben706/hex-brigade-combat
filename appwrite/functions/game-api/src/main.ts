@@ -65,12 +65,6 @@ async function saveState(
     clientState: JSON.stringify(dto),
     mode: dto.mode,
     connectedPlayers: JSON.stringify(dto.connectedPlayers),
-    lobbyMeta: JSON.stringify({
-      lobbyName: dto.lobbyName,
-      phase: dto.phase,
-      playerCount: dto.connectedPlayers.length,
-      hostPlayerId: dto.hostPlayerId,
-    }),
   };
 
   await tablesDB.upsertRow({

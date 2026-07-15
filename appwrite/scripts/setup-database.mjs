@@ -25,6 +25,8 @@ const COLUMNS = [
   { key: 'clientState', size: 1_048_576 },
   { key: 'mode', size: 64 },
   { key: 'connectedPlayers', size: 256 },
+  // Optional: lightweight lobby browser fields (not required by game-api)
+  { key: 'lobbyMeta', size: 512, required: false },
 ];
 
 async function main() {
@@ -62,7 +64,7 @@ Missing APPWRITE_API_KEY.
         key: col.key,
         type: 'string',
         size: col.size,
-        required: true,
+        required: col.required ?? true,
       })),
     });
     console.log(`Created table "${TABLE_ID}" with all columns.`);
@@ -77,7 +79,7 @@ Missing APPWRITE_API_KEY.
           tableId: TABLE_ID,
           key: col.key,
           size: col.size,
-          required: true,
+          required: col.required ?? true,
         });
         console.log(`Added column "${col.key}".`);
       } catch (err) {
