@@ -29,22 +29,27 @@ public sealed class HexGrid
         Width = width;
         Height = height;
 
-        for (var r = 0; r < height; r++)
+        for (var row = 0; row < height; row++)
         {
-            for (var q = 0; q < width; q++)
+            for (var col = 0; col < width; col++)
             {
-                var coord = new HexCoord(q, r);
+                var coord = HexOffset.FromOddR(col, row);
                 _tiles[coord] = new HexTile { Coord = coord };
             }
         }
     }
 
-    public bool Contains(HexCoord coord) => _tiles.ContainsKey(coord);
+    public bool Contains(HexCoord coord) => HexOffset.IsOnGrid(coord, Width, Height);
 
     public TerrainType GetTerrain(HexCoord coord) => _tiles[coord].Terrain;
 
     public void SetTerrain(HexCoord coord, TerrainType terrain)
     {
+        if (!Contains(coord))
+        {
+            return;
+        }
+
         _tiles[coord].Terrain = terrain;
     }
 

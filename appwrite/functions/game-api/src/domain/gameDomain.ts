@@ -1,6 +1,7 @@
 // Port of CombatGame.Domain — authoritative game rules for Appwrite Functions
 import { randomUUID } from 'node:crypto';
 import { generateMap, MAP_SIZE } from './mapGenerator.js';
+import { isOnOffsetGrid, offsetToAxial } from './hexOffset.js';
 import {
   type TileMap,
   type TerrainType,
@@ -384,7 +385,7 @@ function getReachableHexes(
 
     for (let i = 0; i < 6; i++) {
       const n = hexNeighbor(c, i);
-      if (n.q < 0 || n.r < 0 || n.q >= gridW || n.r >= gridH) continue;
+      if (!isOnOffsetGrid(n.q, n.r, gridW, gridH)) continue;
       const key = hexKey(n);
       if (occupied.has(key)) continue;
 
@@ -424,7 +425,7 @@ function tryGetMovementCost(
 
     for (let i = 0; i < 6; i++) {
       const n = hexNeighbor(c, i);
-      if (n.q < 0 || n.r < 0 || n.q >= gridW || n.r >= gridH) continue;
+      if (!isOnOffsetGrid(n.q, n.r, gridW, gridH)) continue;
       const key = hexKey(n);
       if (occupied.has(key)) continue;
 
@@ -620,12 +621,12 @@ export function createSkirmish(mode: GameMode): InternalGameState {
   };
 
   const p0: Array<[UnitType, HexCoord]> = [
-    ['Scout', { q: 1, r: 7 }], ['Infantry', { q: 2, r: 8 }],
-    ['Tank', { q: 0, r: 6 }], ['Artillery', { q: 0, r: 9 }], ['AntiTank', { q: 1, r: 10 }],
+    ['Scout', offsetToAxial(1, 7)], ['Infantry', offsetToAxial(2, 8)],
+    ['Tank', offsetToAxial(0, 6)], ['Artillery', offsetToAxial(0, 9)], ['AntiTank', offsetToAxial(1, 10)],
   ];
   const p1: Array<[UnitType, HexCoord]> = [
-    ['Scout', { q: 14, r: 7 }], ['Infantry', { q: 13, r: 8 }],
-    ['Tank', { q: 15, r: 6 }], ['Artillery', { q: 15, r: 9 }], ['AntiTank', { q: 14, r: 10 }],
+    ['Scout', offsetToAxial(14, 7)], ['Infantry', offsetToAxial(13, 8)],
+    ['Tank', offsetToAxial(15, 6)], ['Artillery', offsetToAxial(15, 9)], ['AntiTank', offsetToAxial(14, 10)],
   ];
   for (const [t, pos] of p0) state.brigades.push(createBrigade(t, 0, pos));
   for (const [t, pos] of p1) state.brigades.push(createBrigade(t, 1, pos));
@@ -659,7 +660,7 @@ function execMove(state: InternalGameState, cmd: GameCommand): CommandResult {
   if (!cmd.targetCoord) return { success: false, error: 'Target coordinate required.' };
 
   const t = cmd.targetCoord;
-  if (t.q < 0 || t.r < 0 || t.q >= state.gridWidth || t.r >= state.gridHeight) {
+  if (!isOnOffsetGrid(t.q, t.r, state.gridWidth, state.gridHeight)) {
     return { success: false, error: 'Target is outside the map.' };
   }
 

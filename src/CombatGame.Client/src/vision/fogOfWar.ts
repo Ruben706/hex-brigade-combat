@@ -1,6 +1,7 @@
 import { hexDistance, withinRange, type HexCoord } from '../render/HexRenderer';
 import type { BrigadeDto, TileDto } from '../types/game';
 import { generateTilesForGame } from '../map/proceduralMap';
+import { eachOffsetHex, isOnOffsetGridCoord } from '../map/hexOffset';
 
 const VISION_BY_UNIT: Record<string, number> = {
   Scout: 5,
@@ -35,12 +36,14 @@ export function buildTerrainMap(
     return map;
   }
 
-  for (let r = 0; r < gridHeight; r++) {
-    for (let q = 0; q < gridWidth; q++) {
-      map.set(hexKey(q, r), 'Plains');
-    }
-  }
+  eachOffsetHex(gridWidth, gridHeight, (_col, _row, hex) => {
+    map.set(hexKey(hex.q, hex.r), 'Plains');
+  });
   return map;
+}
+
+function isHexOnGrid(hex: HexCoord, gridWidth: number, gridHeight: number): boolean {
+  return isOnOffsetGridCoord(hex, gridWidth, gridHeight);
 }
 
 export function computeVisibleHexes(
@@ -54,7 +57,7 @@ export function computeVisibleHexes(
   for (const brigade of brigades.filter((b) => b.playerId === viewingPlayerId)) {
     const range = brigade.visionRange ?? getVisionRange(brigade.unitType);
     for (const hex of withinRange(brigade.q, brigade.r, range)) {
-      if (hex.q >= 0 && hex.r >= 0 && hex.q < gridWidth && hex.r < gridHeight) {
+      if (isHexOnGrid(hex, gridWidth, gridHeight)) {
         visible.add(hexKey(hex.q, hex.r));
       }
     }

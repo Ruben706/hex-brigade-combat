@@ -18,6 +18,7 @@ import type {
 import { PLAYER_COLORS } from './types/game';
 import { computeVisibleHexes, buildTerrainMap, getVisionRange, isBrigadeVisible, isHexVisible } from './vision/fogOfWar';
 import { normalizeGameState } from './map/normalizeGameState';
+import { isOnOffsetGridCoord } from './map/hexOffset';
 
 const app = document.querySelector<HTMLDivElement>('#app')!;
 
@@ -333,13 +334,7 @@ function computeHighlights(
     const brigade = gameState.brigades.find((b) => b.id === weaponHoverPreview!.brigadeId);
     if (brigade) {
       for (const hex of withinRange(brigade.q, brigade.r, weaponHoverPreview.range)) {
-        if (
-          hex.q >= 0 &&
-          hex.r >= 0 &&
-          hex.q < gameState.gridWidth &&
-          hex.r < gameState.gridHeight &&
-          isHexVisible(visibleHexes, hex)
-        ) {
+        if (isOnOffsetGridCoord(hex, gameState.gridWidth, gameState.gridHeight) && isHexVisible(visibleHexes, hex)) {
           rangeHexes.push(hex);
         }
       }

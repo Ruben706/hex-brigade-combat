@@ -1,5 +1,6 @@
 import type { BrigadeDto, GameStateDto } from '../types/game';
 import { PLAYER_COLORS, TERRAIN_COLORS, UNIT_LABELS } from '../types/game';
+import { eachOffsetHex, isOnOffsetGrid, isOnOffsetGridCoord, offsetToAxial } from '../map/hexOffset';
 import { isBrigadeVisible, isHexVisible } from '../vision/fogOfWar';
 
 export interface HexCoord {
@@ -98,11 +99,11 @@ export class HexRenderer {
     this.hexSize = Math.max(18, Math.min(DEFAULT_HEX_SIZE, Math.floor(Math.min(fitWidth, fitHeight))));
 
     const corners = [
-      this.hexToPixelUncentered(0, 0),
-      this.hexToPixelUncentered(gridWidth - 1, 0),
-      this.hexToPixelUncentered(0, gridHeight - 1),
-      this.hexToPixelUncentered(gridWidth - 1, gridHeight - 1),
-    ];
+      offsetToAxial(0, 0),
+      offsetToAxial(gridWidth - 1, 0),
+      offsetToAxial(0, gridHeight - 1),
+      offsetToAxial(gridWidth - 1, gridHeight - 1),
+    ].map(({ q, r }) => this.hexToPixelUncentered(q, r));
 
     const minX = Math.min(...corners.map((c) => c.x));
     const maxX = Math.max(...corners.map((c) => c.x));
@@ -144,7 +145,7 @@ export class HexRenderer {
   }
 
   isOnGrid(hex: HexCoord): boolean {
-    return hex.q >= 0 && hex.r >= 0 && hex.q < this.gridWidth && hex.r < this.gridHeight;
+    return isOnOffsetGridCoord(hex, this.gridWidth, this.gridHeight);
   }
 
   render(state: GameStateDto, options: RenderOptions): void {
@@ -153,33 +154,29 @@ export class HexRenderer {
 
     const fogEnabled = options.visibleHexes !== null;
 
-    for (let r = 0; r < state.gridHeight; r++) {
-      for (let q = 0; q < state.gridWidth; q++) {
-        const hex = { q, r };
-        const visible = !fogEnabled || isHexVisible(options.visibleHexes!, hex);
-        const terrain = options.terrain.get(`${q},${r}`) ?? 'Plains';
-        const baseFill = TERRAIN_COLORS[terrain] ?? '#2a3d52';
-        const isMove = visible && options.highlightHexes.some((h) => h.q === q && h.r === r);
-        const isAttack = visible && options.attackHexes.some((h) => h.q === q && h.r === r);
-        const fill = visible
-          ? isMove
-            ? '#3d6b4f'
-            : isAttack
-              ? '#6b3d3d'
-              : baseFill
-          : '#141a22';
-        this.drawHex(q, r, '#1e2a3a', fill, visible ? '#2a3d52' : '#0f1419');
-      }
-    }
+    eachOffsetHex(state.gridWidth, state.gridHeight, (_col, _row, hex) => {
+      const { q, r } = hex;
+      const visible = !fogEnabled || isHexVisible(options.visibleHexes!, hex);
+      const terrain = options.terrain.get(`${q},${r}`) ?? 'Plains';
+      const baseFill = TERRAIN_COLORS[terrain] ?? '#2a3d52';
+      const isMove = visible && options.highlightHexes.some((h) => h.q === q && h.r === r);
+      const isAttack = visible && options.attackHexes.some((h) => h.q === q && h.r === r);
+      const fill = visible
+        ? isMove
+          ? '#3d6b4f'
+          : isAttack
+            ? '#6b3d3d'
+            : baseFill
+        : '#141a22';
+      this.drawHex(q, r, '#1e2a3a', fill, visible ? '#2a3d52' : '#0f1419');
+    });
 
     if (fogEnabled) {
-      for (let r = 0; r < state.gridHeight; r++) {
-        for (let q = 0; q < state.gridWidth; q++) {
-          if (!isHexVisible(options.visibleHexes!, { q, r })) {
-            this.drawHexFogOverlay(q, r);
-          }
+      eachOffsetHex(state.gridWidth, state.gridHeight, (_col, _row, hex) => {
+        if (!isHexVisible(options.visibleHexes!, hex)) {
+          this.drawHexFogOverlay(hex.q, hex.r);
         }
-      }
+      });
     }
 
     for (const hex of options.rangeHexes) {
@@ -377,10 +374,7 @@ export function getReachableHexes(
 
     for (const neighbor of getNeighbors(coord.q, coord.r)) {
       if (
-        neighbor.q < 0 ||
-        neighbor.r < 0 ||
-        neighbor.q >= gridWidth ||
-        neighbor.r >= gridHeight ||
+        !isOnOffsetGrid(neighbor.q, neighbor.r, gridWidth, gridHeight) ||
         occupiedSet.has(`${neighbor.q},${neighbor.r}`)
       ) {
         continue;

@@ -26,32 +26,32 @@ public static class DefaultSkirmishMap
             Rng = rng
         };
 
-        var player0Units = new (UnitType type, HexCoord pos)[]
+        var player0Units = new (UnitType type, int col, int row)[]
         {
-            (UnitType.Scout, new HexCoord(1, 7)),
-            (UnitType.Infantry, new HexCoord(2, 8)),
-            (UnitType.Tank, new HexCoord(0, 6)),
-            (UnitType.Artillery, new HexCoord(0, 9)),
-            (UnitType.AntiTank, new HexCoord(1, 10))
+            (UnitType.Scout, 1, 7),
+            (UnitType.Infantry, 2, 8),
+            (UnitType.Tank, 0, 6),
+            (UnitType.Artillery, 0, 9),
+            (UnitType.AntiTank, 1, 10)
         };
 
-        var player1Units = new (UnitType type, HexCoord pos)[]
+        var player1Units = new (UnitType type, int col, int row)[]
         {
-            (UnitType.Scout, new HexCoord(14, 7)),
-            (UnitType.Infantry, new HexCoord(13, 8)),
-            (UnitType.Tank, new HexCoord(15, 6)),
-            (UnitType.Artillery, new HexCoord(15, 9)),
-            (UnitType.AntiTank, new HexCoord(14, 10))
+            (UnitType.Scout, 14, 7),
+            (UnitType.Infantry, 13, 8),
+            (UnitType.Tank, 15, 6),
+            (UnitType.Artillery, 15, 9),
+            (UnitType.AntiTank, 14, 10)
         };
 
-        foreach (var (type, pos) in player0Units)
+        foreach (var (type, col, row) in player0Units)
         {
-            state.Brigades.Add(UnitCatalog.CreateBrigade(type, 0, pos));
+            state.Brigades.Add(UnitCatalog.CreateBrigade(type, 0, HexOffset.FromOddR(col, row)));
         }
 
-        foreach (var (type, pos) in player1Units)
+        foreach (var (type, col, row) in player1Units)
         {
-            state.Brigades.Add(UnitCatalog.CreateBrigade(type, 1, pos));
+            state.Brigades.Add(UnitCatalog.CreateBrigade(type, 1, HexOffset.FromOddR(col, row)));
         }
 
         state.AddEvent(GameEventType.TurnEnded, "Battle begins! Player 0's turn.");
