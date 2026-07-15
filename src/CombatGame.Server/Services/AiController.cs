@@ -164,7 +164,8 @@ public sealed class AiController
             brigade.Position,
             brigade.TurnState.MovementPointsRemaining,
             state.Grid,
-            state.Brigades.Where(b => b.Id != brigade.Id).Select(b => b.Position));
+            state.Brigades.Where(b => b.Id != brigade.Id).Select(b => b.Position),
+            isFirstMove: !brigade.TurnState.HasMoved);
 
         foreach (var candidate in reachable)
         {

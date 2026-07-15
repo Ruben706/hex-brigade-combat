@@ -20,29 +20,25 @@ public static class MovementHelper
     public static void ResetMovementPoints(Brigade brigade) =>
         brigade.TurnState.MovementPointsRemaining = GetMovementPoints(brigade);
 
-    public static HashSet<HexCoord> GetReachableHexes(
+    /// <summary>
+    /// Dijkstra over terrain costs. Returns the cheapest path cost to every hex
+    /// reachable within <paramref name="movementRange"/> points.
+    /// </summary>
+    private static Dictionary<HexCoord, int> ComputePathCosts(
         HexCoord start,
         int movementRange,
         HexGrid grid,
-        IEnumerable<HexCoord> occupiedCoords)
+        HashSet<HexCoord> occupied)
     {
-        var occupied = occupiedCoords.ToHashSet();
-        var reachable = new HashSet<HexCoord>();
-        var visited = new Dictionary<HexCoord, int> { [start] = 0 };
-        var queue = new Queue<(HexCoord coord, int cost)>();
-        queue.Enqueue((start, 0));
+        var costs = new Dictionary<HexCoord, int> { [start] = 0 };
+        var queue = new PriorityQueue<HexCoord, int>();
+        queue.Enqueue(start, 0);
 
-        while (queue.Count > 0)
+        while (queue.TryDequeue(out var current, out var cost))
         {
-            var (current, cost) = queue.Dequeue();
-            if (cost > 0)
+            if (cost > costs[current])
             {
-                reachable.Add(current);
-            }
-
-            if (cost >= movementRange)
-            {
-                continue;
+                continue; // stale entry
             }
 
             for (var i = 0; i < 6; i++)
@@ -59,20 +55,62 @@ public static class MovementHelper
                     continue;
                 }
 
-                var stepCost = TerrainHelper.GetMovementCost(terrain);
-                var nextCost = cost + stepCost;
+                var nextCost = cost + TerrainHelper.GetMovementCost(terrain);
                 if (nextCost > movementRange)
                 {
                     continue;
                 }
 
-                if (visited.TryGetValue(neighbor, out var knownCost) && knownCost <= nextCost)
+                if (costs.TryGetValue(neighbor, out var knownCost) && knownCost <= nextCost)
                 {
                     continue;
                 }
 
-                visited[neighbor] = nextCost;
-                queue.Enqueue((neighbor, nextCost));
+                costs[neighbor] = nextCost;
+                queue.Enqueue(neighbor, nextCost);
+            }
+        }
+
+        costs.Remove(start);
+        return costs;
+    }
+
+    /// <summary>
+    /// True when the target is a passable, unoccupied hex directly adjacent to start.
+    /// On a brigade's first move of the turn such a step is always allowed,
+    /// regardless of its movement point cost (deep water / mountains stay impassable).
+    /// </summary>
+    private static bool IsFreeAdjacentStep(
+        HexCoord start,
+        HexCoord target,
+        HexGrid grid,
+        HashSet<HexCoord> occupied)
+    {
+        return start.DistanceTo(target) == 1 &&
+               grid.Contains(target) &&
+               !occupied.Contains(target) &&
+               TerrainHelper.IsPassable(grid.GetTerrain(target));
+    }
+
+    public static HashSet<HexCoord> GetReachableHexes(
+        HexCoord start,
+        int movementRange,
+        HexGrid grid,
+        IEnumerable<HexCoord> occupiedCoords,
+        bool isFirstMove = false)
+    {
+        var occupied = occupiedCoords.ToHashSet();
+        var reachable = ComputePathCosts(start, movementRange, grid, occupied).Keys.ToHashSet();
+
+        if (isFirstMove)
+        {
+            for (var i = 0; i < 6; i++)
+            {
+                var neighbor = start.Neighbor(i);
+                if (IsFreeAdjacentStep(start, neighbor, grid, occupied))
+                {
+                    reachable.Add(neighbor);
+                }
             }
         }
 
@@ -84,8 +122,9 @@ public static class MovementHelper
         HexCoord target,
         int movementRange,
         HexGrid grid,
-        IEnumerable<HexCoord> occupiedCoords) =>
-        TryGetMovementCost(start, target, movementRange, grid, occupiedCoords, out _);
+        IEnumerable<HexCoord> occupiedCoords,
+        bool isFirstMove = false) =>
+        TryGetMovementCost(start, target, movementRange, grid, occupiedCoords, out _, isFirstMove);
 
     public static bool TryGetMovementCost(
         HexCoord start,
@@ -93,7 +132,8 @@ public static class MovementHelper
         int movementRange,
         HexGrid grid,
         IEnumerable<HexCoord> occupiedCoords,
-        out int cost)
+        out int cost,
+        bool isFirstMove = false)
     {
         cost = 0;
         if (start == target)
@@ -102,55 +142,16 @@ public static class MovementHelper
         }
 
         var occupied = occupiedCoords.ToHashSet();
-        var visited = new Dictionary<HexCoord, int> { [start] = 0 };
-        var queue = new Queue<(HexCoord coord, int pathCost)>();
-        queue.Enqueue((start, 0));
 
-        while (queue.Count > 0)
+        // A direct adjacent step is always the cheapest way to an adjacent hex
+        // (any path ends by paying the target's terrain cost).
+        if (isFirstMove && IsFreeAdjacentStep(start, target, grid, occupied))
         {
-            var (current, pathCost) = queue.Dequeue();
-            if (pathCost >= movementRange)
-            {
-                continue;
-            }
-
-            for (var i = 0; i < 6; i++)
-            {
-                var neighbor = current.Neighbor(i);
-                if (!grid.Contains(neighbor) || occupied.Contains(neighbor))
-                {
-                    continue;
-                }
-
-                var terrain = grid.GetTerrain(neighbor);
-                if (!TerrainHelper.IsPassable(terrain))
-                {
-                    continue;
-                }
-
-                var stepCost = TerrainHelper.GetMovementCost(terrain);
-                var nextCost = pathCost + stepCost;
-                if (nextCost > movementRange)
-                {
-                    continue;
-                }
-
-                if (visited.TryGetValue(neighbor, out var knownCost) && knownCost <= nextCost)
-                {
-                    continue;
-                }
-
-                visited[neighbor] = nextCost;
-                queue.Enqueue((neighbor, nextCost));
-            }
+            cost = TerrainHelper.GetMovementCost(grid.GetTerrain(target));
+            return true;
         }
 
-        if (!visited.TryGetValue(target, out cost) || cost <= 0)
-        {
-            cost = 0;
-            return false;
-        }
-
-        return true;
+        var costs = ComputePathCosts(start, movementRange, grid, occupied);
+        return costs.TryGetValue(target, out cost);
     }
 }

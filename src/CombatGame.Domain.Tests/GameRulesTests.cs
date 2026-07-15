@@ -511,6 +511,123 @@ public class TerrainTests
     }
 
     [Fact]
+    public void FirstMove_AllowsAdjacentExpensiveTerrain_AndClampsPointsAtZero()
+    {
+        var state = DefaultSkirmishMap.Create(GameMode.Hotseat);
+        var artillery = state.Brigades.First(b => b.UnitType == UnitType.Artillery && b.PlayerId == 0);
+        artillery.Position = new HexCoord(5, 7);
+        var target = new HexCoord(6, 7);
+        state.Grid.SetTerrain(target, TerrainType.Hill); // cost 2, artillery has 1 MP
+
+        var result = GameEngine.Execute(state, new GameCommand
+        {
+            Type = CommandType.Move,
+            PlayerId = 0,
+            BrigadeId = artillery.Id,
+            TargetCoord = target
+        });
+
+        Assert.True(result.Success);
+        Assert.Equal(target, artillery.Position);
+        Assert.Equal(0, artillery.TurnState.MovementPointsRemaining);
+    }
+
+    [Fact]
+    public void FirstMove_StillCannotEnterImpassableTerrain()
+    {
+        var state = DefaultSkirmishMap.Create(GameMode.Hotseat);
+        var tank = state.Brigades.First(b => b.UnitType == UnitType.Tank && b.PlayerId == 0);
+        tank.Position = new HexCoord(5, 7);
+        var target = new HexCoord(6, 7);
+        state.Grid.SetTerrain(target, TerrainType.DeepWater);
+
+        var result = GameEngine.Execute(state, new GameCommand
+        {
+            Type = CommandType.Move,
+            PlayerId = 0,
+            BrigadeId = tank.Id,
+            TargetCoord = target
+        });
+
+        Assert.False(result.Success);
+        Assert.Equal(new HexCoord(5, 7), tank.Position);
+    }
+
+    [Fact]
+    public void SecondMove_DoesNotGetFreeAdjacentStep()
+    {
+        var state = DefaultSkirmishMap.Create(GameMode.Hotseat);
+        var infantry = state.Brigades.First(b => b.UnitType == UnitType.Infantry && b.PlayerId == 0);
+        infantry.Position = new HexCoord(5, 7);
+        TestMapHelper.SetPlains(state, new HexCoord(6, 7));
+        var forest = new HexCoord(7, 7);
+        state.Grid.SetTerrain(forest, TerrainType.Forest); // cost 2
+
+        // First move: one plains step, spends 1 of 2 points.
+        var first = GameEngine.Execute(state, new GameCommand
+        {
+            Type = CommandType.Move,
+            PlayerId = 0,
+            BrigadeId = infantry.Id,
+            TargetCoord = new HexCoord(6, 7)
+        });
+        Assert.True(first.Success);
+        Assert.Equal(1, infantry.TurnState.MovementPointsRemaining);
+
+        // Second move into forest costs 2 with only 1 point left — no free step now.
+        var second = GameEngine.Execute(state, new GameCommand
+        {
+            Type = CommandType.Move,
+            PlayerId = 0,
+            BrigadeId = infantry.Id,
+            TargetCoord = forest
+        });
+        Assert.False(second.Success);
+    }
+
+    [Fact]
+    public void Movement_SpendsPointsByPathCost()
+    {
+        var state = DefaultSkirmishMap.Create(GameMode.Hotseat);
+        var tank = state.Brigades.First(b => b.UnitType == UnitType.Tank && b.PlayerId == 0);
+        tank.Position = new HexCoord(5, 7);
+        TestMapHelper.SetPlains(state, new HexCoord(6, 7), new HexCoord(7, 7));
+
+        var result = GameEngine.Execute(state, new GameCommand
+        {
+            Type = CommandType.Move,
+            PlayerId = 0,
+            BrigadeId = tank.Id,
+            TargetCoord = new HexCoord(7, 7)
+        });
+
+        Assert.True(result.Success);
+        Assert.Equal(2, tank.TurnState.MovementPointsRemaining); // 4 - 2 plains steps
+    }
+
+    [Fact]
+    public void Pathfinding_PrefersCheaperRoute()
+    {
+        var grid = new HexGrid(16, 16);
+        foreach (var tile in grid.Tiles.Values)
+        {
+            tile.Terrain = TerrainType.Plains;
+        }
+
+        // Direct step is forest (cost 2); going around over plains costs 2 as well,
+        // but a 2-long plains path to the far side must still be found optimally.
+        var start = new HexCoord(5, 7);
+        var forest = new HexCoord(6, 7);
+        var beyond = new HexCoord(7, 7);
+        grid.SetTerrain(forest, TerrainType.Forest);
+
+        Assert.True(MovementHelper.TryGetMovementCost(start, beyond, 4, grid, [], out var cost));
+        // Cheapest route to 'beyond': around the forest over plains = 3 steps of cost 1,
+        // or through the forest = 2 + 1 = 3. Either way optimal cost is 3.
+        Assert.Equal(3, cost);
+    }
+
+    [Fact]
     public void OffsetNeighbors_AreAdjacentAndParityAware()
     {
         // Even row

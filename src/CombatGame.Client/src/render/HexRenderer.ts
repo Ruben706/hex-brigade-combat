@@ -377,52 +377,80 @@ export function getReachableHexes(
   gridHeight: number,
   occupied: HexCoord[],
   terrain: Map<string, string>,
+  isFirstMove = false,
 ): HexCoord[] {
   const occupiedSet = new Set(occupied.map((h) => `${h.q},${h.r}`));
   const startKey = `${start.q},${start.r}`;
-  const visited = new Map<string, number>([[startKey, 0]]);
-  const reachable: HexCoord[] = [];
-  const queue: Array<{ coord: HexCoord; cost: number }> = [{ coord: start, cost: 0 }];
 
-  while (queue.length > 0) {
-    const { coord, cost } = queue.shift()!;
-    if (cost > 0) {
-      reachable.push(coord);
-    }
-    if (cost >= movementRange) {
-      continue;
-    }
+  // Dijkstra over terrain costs (frontier scan is fine on a 16x16 map).
+  const costs = new Map<string, number>([[startKey, 0]]);
+  const coords = new Map<string, HexCoord>([[startKey, start]]);
+  const frontier = new Set<string>([startKey]);
 
-    for (const neighbor of getNeighbors(coord.q, coord.r)) {
-      if (
-        !isOnOffsetGrid(neighbor.q, neighbor.r, gridWidth, gridHeight) ||
-        occupiedSet.has(`${neighbor.q},${neighbor.r}`)
-      ) {
+  while (frontier.size > 0) {
+    let currentKey = '';
+    let currentCost = Infinity;
+    for (const key of frontier) {
+      const c = costs.get(key)!;
+      if (c < currentCost) {
+        currentCost = c;
+        currentKey = key;
+      }
+    }
+    frontier.delete(currentKey);
+    const current = coords.get(currentKey)!;
+
+    for (const neighbor of getNeighbors(current.q, current.r)) {
+      const key = `${neighbor.q},${neighbor.r}`;
+      if (!isOnOffsetGrid(neighbor.q, neighbor.r, gridWidth, gridHeight) || occupiedSet.has(key)) {
         continue;
       }
 
-      const tileTerrain = terrain.get(`${neighbor.q},${neighbor.r}`) ?? 'Plains';
+      const tileTerrain = terrain.get(key) ?? 'Plains';
       if (!isPassableTerrain(tileTerrain)) {
         continue;
       }
 
-      const nextCost = cost + terrainMovementCost(tileTerrain);
+      const nextCost = currentCost + terrainMovementCost(tileTerrain);
       if (nextCost > movementRange) {
         continue;
       }
 
-      const key = `${neighbor.q},${neighbor.r}`;
-      const known = visited.get(key);
+      const known = costs.get(key);
       if (known !== undefined && known <= nextCost) {
         continue;
       }
 
-      visited.set(key, nextCost);
-      queue.push({ coord: neighbor, cost: nextCost });
+      costs.set(key, nextCost);
+      coords.set(key, neighbor);
+      frontier.add(key);
     }
   }
 
-  return reachable;
+  const result = new Map<string, HexCoord>();
+  for (const [key, coord] of coords) {
+    if (key !== startKey) {
+      result.set(key, coord);
+    }
+  }
+
+  // First move of the turn: any adjacent passable, unoccupied tile is allowed
+  // regardless of cost (deep water / mountains stay impassable).
+  if (isFirstMove) {
+    for (const neighbor of getNeighbors(start.q, start.r)) {
+      const key = `${neighbor.q},${neighbor.r}`;
+      if (!isOnOffsetGrid(neighbor.q, neighbor.r, gridWidth, gridHeight) || occupiedSet.has(key)) {
+        continue;
+      }
+      const tileTerrain = terrain.get(key) ?? 'Plains';
+      if (!isPassableTerrain(tileTerrain)) {
+        continue;
+      }
+      result.set(key, neighbor);
+    }
+  }
+
+  return [...result.values()];
 }
 
 export function withinRange(q: number, r: number, range: number): HexCoord[] {

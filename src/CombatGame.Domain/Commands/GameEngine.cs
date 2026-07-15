@@ -72,7 +72,8 @@ public static class GameEngine
                 brigade.TurnState.MovementPointsRemaining,
                 state.Grid,
                 state.Brigades.Where(b => b.Id != brigade.Id).Select(b => b.Position),
-                out var moveCost))
+                out var moveCost,
+                isFirstMove: !brigade.TurnState.HasMoved))
         {
             return CommandResult.Fail("Target is out of movement range.");
         }
@@ -85,7 +86,8 @@ public static class GameEngine
         TurnManager.ClearMovementStatuses(brigade);
         brigade.Position = target;
         brigade.TurnState.HasMoved = true;
-        brigade.TurnState.MovementPointsRemaining -= moveCost;
+        brigade.TurnState.MovementPointsRemaining =
+            Math.Max(0, brigade.TurnState.MovementPointsRemaining - moveCost);
         state.AddEvent(GameEventType.Moved,
             $"Player {brigade.PlayerId}'s {brigade.UnitType} moved to ({target.Q},{target.R}).");
         return CommandResult.Ok();

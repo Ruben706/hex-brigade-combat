@@ -388,25 +388,35 @@ function resetMovementPoints(b: Brigade): void {
   b.turnState.movementPointsRemaining = getMovementPoints(b);
 }
 
-function getReachableHexes(
+/** Dijkstra over terrain costs: cheapest path cost to every hex within range. */
+function computePathCosts(
   start: HexCoord,
   range: number,
   gridW: number,
   gridH: number,
   occupied: Set<string>,
   tiles: TileMap,
-): HexCoord[] {
-  const reachable: HexCoord[] = [];
-  const visited = new Map<string, number>([[hexKey(start), 0]]);
-  const queue: Array<{ c: HexCoord; cost: number }> = [{ c: start, cost: 0 }];
+): Map<string, number> {
+  const costs = new Map<string, number>([[hexKey(start), 0]]);
+  const coords = new Map<string, HexCoord>([[hexKey(start), start]]);
+  // Small frontier (16x16 map) — linear-scan extraction is fine.
+  const frontier = new Set<string>([hexKey(start)]);
 
-  while (queue.length > 0) {
-    const { c, cost } = queue.shift()!;
-    if (cost > 0) reachable.push(c);
-    if (cost >= range) continue;
+  while (frontier.size > 0) {
+    let currentKey = '';
+    let currentCost = Infinity;
+    for (const key of frontier) {
+      const c = costs.get(key)!;
+      if (c < currentCost) {
+        currentCost = c;
+        currentKey = key;
+      }
+    }
+    frontier.delete(currentKey);
+    const current = coords.get(currentKey)!;
 
     for (let i = 0; i < 6; i++) {
-      const n = hexNeighbor(c, i);
+      const n = hexNeighbor(current, i);
       if (!isOnOffsetGrid(n.q, n.r, gridW, gridH)) continue;
       const key = hexKey(n);
       if (occupied.has(key)) continue;
@@ -414,17 +424,68 @@ function getReachableHexes(
       const terrain = getTerrain(tiles, n.q, n.r);
       if (!isPassable(terrain)) continue;
 
-      const stepCost = getMovementCost(terrain);
-      const next = cost + stepCost;
+      const next = currentCost + getMovementCost(terrain);
       if (next > range) continue;
 
-      const known = visited.get(key);
+      const known = costs.get(key);
       if (known !== undefined && known <= next) continue;
-      visited.set(key, next);
-      queue.push({ c: n, cost: next });
+      costs.set(key, next);
+      coords.set(key, n);
+      frontier.add(key);
     }
   }
-  return reachable;
+
+  costs.delete(hexKey(start));
+  return costs;
+}
+
+/**
+ * A passable, unoccupied hex directly adjacent to start. On a brigade's first
+ * move of the turn such a step is always allowed regardless of cost
+ * (deep water / mountains stay impassable).
+ */
+function isFreeAdjacentStep(
+  start: HexCoord,
+  target: HexCoord,
+  gridW: number,
+  gridH: number,
+  occupied: Set<string>,
+  tiles: TileMap,
+): boolean {
+  return (
+    hexDistance(start, target) === 1 &&
+    isOnOffsetGrid(target.q, target.r, gridW, gridH) &&
+    !occupied.has(hexKey(target)) &&
+    isPassable(getTerrain(tiles, target.q, target.r))
+  );
+}
+
+function getReachableHexes(
+  start: HexCoord,
+  range: number,
+  gridW: number,
+  gridH: number,
+  occupied: Set<string>,
+  tiles: TileMap,
+  isFirstMove = false,
+): HexCoord[] {
+  const costs = computePathCosts(start, range, gridW, gridH, occupied, tiles);
+  const result = new Map<string, HexCoord>();
+  for (const key of costs.keys()) {
+    const [q, r] = key.split(',').map(Number);
+    result.set(key, { q, r });
+  }
+
+  if (isFirstMove) {
+    for (let i = 0; i < 6; i++) {
+      const n = hexNeighbor(start, i);
+      if (isFreeAdjacentStep(start, n, gridW, gridH, occupied, tiles)) {
+        result.set(hexKey(n), n);
+      }
+    }
+  }
+
+  return [...result.values()];
 }
 
 function tryGetMovementCost(
@@ -435,38 +496,17 @@ function tryGetMovementCost(
   gridH: number,
   occupied: Set<string>,
   tiles: TileMap,
+  isFirstMove = false,
 ): number | null {
   if (start.q === target.q && start.r === target.r) return null;
 
-  const visited = new Map<string, number>([[hexKey(start), 0]]);
-  const queue: Array<{ c: HexCoord; cost: number }> = [{ c: start, cost: 0 }];
-
-  while (queue.length > 0) {
-    const { c, cost } = queue.shift()!;
-    if (cost >= range) continue;
-
-    for (let i = 0; i < 6; i++) {
-      const n = hexNeighbor(c, i);
-      if (!isOnOffsetGrid(n.q, n.r, gridW, gridH)) continue;
-      const key = hexKey(n);
-      if (occupied.has(key)) continue;
-
-      const terrain = getTerrain(tiles, n.q, n.r);
-      if (!isPassable(terrain)) continue;
-
-      const stepCost = getMovementCost(terrain);
-      const next = cost + stepCost;
-      if (next > range) continue;
-
-      const known = visited.get(key);
-      if (known !== undefined && known <= next) continue;
-      visited.set(key, next);
-      queue.push({ c: n, cost: next });
-    }
+  // A direct adjacent step is always the cheapest way to an adjacent hex.
+  if (isFirstMove && isFreeAdjacentStep(start, target, gridW, gridH, occupied, tiles)) {
+    return getMovementCost(getTerrain(tiles, target.q, target.r));
   }
 
-  const cost = visited.get(hexKey(target));
-  return cost !== undefined && cost > 0 ? cost : null;
+  const costs = computePathCosts(start, range, gridW, gridH, occupied, tiles);
+  return costs.get(hexKey(target)) ?? null;
 }
 
 // --- Combat ---
@@ -813,6 +853,7 @@ function execMove(state: InternalGameState, cmd: GameCommand): CommandResult {
     MAP_SIZE,
     occupied,
     state.tiles,
+    !b.turnState.hasMoved,
   );
   if (moveCost === null) {
     return { success: false, error: 'Target is out of movement range.' };
@@ -822,7 +863,7 @@ function execMove(state: InternalGameState, cmd: GameCommand): CommandResult {
   clearMovementStatuses(b);
   b.position = t;
   b.turnState.hasMoved = true;
-  b.turnState.movementPointsRemaining -= moveCost;
+  b.turnState.movementPointsRemaining = Math.max(0, b.turnState.movementPointsRemaining - moveCost);
   addEvent(state, 'Moved', `Player ${b.playerId}'s ${b.unitType} moved to (${t.q},${t.r}).`);
   return { success: true };
 }
@@ -979,6 +1020,7 @@ function tryMoveTowardEnemy(state: InternalGameState, b: Brigade, ai: number): b
     state.gridHeight,
     occupied,
     state.tiles,
+    !b.turnState.hasMoved,
   );
 
   let best: HexCoord | null = null;

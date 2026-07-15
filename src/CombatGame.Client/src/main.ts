@@ -360,6 +360,7 @@ function computeHighlights(
         gameState.gridHeight,
         occupied,
         terrain,
+        !brigade.hasMoved,
       ).filter((hex) => isHexVisible(visibleHexes, hex)),
     );
   }
