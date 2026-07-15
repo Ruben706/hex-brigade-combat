@@ -37,6 +37,11 @@ public sealed class GameHub : Hub
         return new { lobbies = _gameService.ListLobbies() };
     }
 
+    public GameStateDto? GetState(Guid gameId)
+    {
+        return _gameService.GetState(gameId);
+    }
+
     public async Task<object> JoinGame(Guid gameId, int playerId)
     {
         var (success, error, state) = _gameService.JoinGame(gameId, Context.ConnectionId, playerId);

@@ -1,12 +1,13 @@
-import { Channel, Functions, Realtime, ExecutionMethod } from 'appwrite';
+import { Functions, ExecutionMethod } from 'appwrite';
 import {
   APPWRITE_FUNCTION_ID,
-  APPWRITE_DATABASE_ID,
-  APPWRITE_GAMES_COLLECTION_ID,
   client,
 } from '../lib/appwrite';
 import type { GameCommandDto, GameMode, GameStateDto, LobbySummary } from '../types/game';
 import type { LoadoutUnit } from '../map/armyBuilder';
+
+/** HTTP poll interval when Realtime is unavailable (Appwrite free tier rate-limits WebSockets). */
+const SESSION_POLL_MS = 8000;
 
 function ensureFunctionConfigured(): void {
   if (!APPWRITE_FUNCTION_ID) {
@@ -37,34 +38,55 @@ async function invoke<T>(body: Record<string, unknown>): Promise<T> {
 
 export class AppwriteGameClient {
   private onStateChanged?: (state: GameStateDto) => void;
-  private subscription: { unsubscribe: () => Promise<void> } | null = null;
+  private sessionPollTimer: ReturnType<typeof setInterval> | null = null;
+  private sessionGameId: string | null = null;
 
   setStateHandler(handler: (state: GameStateDto) => void): void {
     this.onStateChanged = handler;
   }
 
   async connect(): Promise<void> {
-    // Realtime subscribes per game session
+    // State sync uses HTTP polling — Appwrite Realtime WebSockets hit 429 on free tier.
   }
 
-  private async subscribeToGame(gameId: string): Promise<void> {
-    if (this.subscription) {
-      await this.subscription.unsubscribe();
+  async fetchGameState(gameId: string): Promise<GameStateDto | null> {
+    const result = await invoke<{ success: boolean; state?: GameStateDto; error?: string }>({
+      action: 'getState',
+      gameId,
+    });
+    return result.success && result.state ? result.state : null;
+  }
+
+  private stopSessionSync(): void {
+    if (this.sessionPollTimer != null) {
+      clearInterval(this.sessionPollTimer);
+      this.sessionPollTimer = null;
+    }
+    this.sessionGameId = null;
+  }
+
+  private startSessionSync(gameId: string): void {
+    if (this.sessionGameId === gameId && this.sessionPollTimer != null) {
+      return;
     }
 
-    const realtime = new Realtime(client);
-    const table = Channel.tablesdb(APPWRITE_DATABASE_ID).table(APPWRITE_GAMES_COLLECTION_ID);
-    const channels = [table.row(gameId).create(), table.row(gameId).update()];
+    this.stopSessionSync();
+    this.sessionGameId = gameId;
 
-    this.subscription = await realtime.subscribe(channels, (event) => {
-      if (event.events.some((e) => e.includes('.update') || e.includes('.create'))) {
-        const payload = event.payload as { clientState?: string };
-        if (payload.clientState) {
-          const state = JSON.parse(payload.clientState) as GameStateDto;
+    const pull = async () => {
+      if (this.sessionGameId !== gameId) return;
+      try {
+        const state = await this.fetchGameState(gameId);
+        if (state) {
           this.onStateChanged?.(state);
         }
+      } catch (err) {
+        console.warn('Session state sync failed:', err);
       }
-    });
+    };
+
+    void pull();
+    this.sessionPollTimer = setInterval(() => void pull(), SESSION_POLL_MS);
   }
 
   async createGame(mode: GameMode): Promise<{ gameId: string; state: GameStateDto }> {
@@ -72,7 +94,9 @@ export class AppwriteGameClient {
       action: 'createGame',
       mode,
     });
-    await this.subscribeToGame(result.gameId);
+    if (result.state.mode === 'Multiplayer') {
+      this.startSessionSync(result.gameId);
+    }
     return { gameId: result.gameId, state: result.state };
   }
 
@@ -85,7 +109,7 @@ export class AppwriteGameClient {
       lobbyName,
       playerId,
     });
-    await this.subscribeToGame(result.gameId);
+    this.startSessionSync(result.gameId);
     return { gameId: result.gameId, state: result.state };
   }
 
@@ -106,7 +130,7 @@ export class AppwriteGameClient {
       playerId,
     });
     if (result.success && result.state) {
-      await this.subscribeToGame(gameId);
+      this.startSessionSync(gameId);
     }
     return result;
   }
@@ -199,6 +223,7 @@ export class AppwriteGameClient {
       gameId,
       playerId,
     });
+    this.stopSessionSync();
     return result;
   }
 
@@ -220,8 +245,7 @@ export class AppwriteGameClient {
   }
 
   disconnect(): void {
-    void this.subscription?.unsubscribe();
-    this.subscription = null;
+    this.stopSessionSync();
   }
 }
 

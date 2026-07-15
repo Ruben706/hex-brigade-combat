@@ -61,6 +61,7 @@ function renderApp(): void {
           <div class="lobby-browser-toolbar">
             <input id="lobby-name-input" placeholder="Lobby name (optional)" />
             <button id="create-lobby-btn">Create Lobby</button>
+            <button id="lobby-refresh-btn">Refresh List</button>
             <button id="lobby-back-btn">Back</button>
           </div>
           <div class="join-row">
@@ -81,6 +82,7 @@ function renderApp(): void {
           <h2 id="waiting-lobby-name">Lobby</h2>
           <p>Game ID: <code id="waiting-game-id"></code></p>
           <p id="waiting-players">Waiting for opponent...</p>
+          <button id="waiting-refresh-btn">Refresh Status</button>
           <button id="waiting-leave-btn">Leave Lobby</button>
         </div>
         <div id="loadout-screen" class="prebattle-screen hidden">

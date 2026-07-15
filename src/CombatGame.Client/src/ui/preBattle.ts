@@ -31,7 +31,6 @@ export interface PreBattleDeps {
 }
 
 let deps: PreBattleDeps | null = null;
-let lobbyPollTimer: ReturnType<typeof setInterval> | null = null;
 let localRoster: LoadoutUnit[] = [];
 let selectedRosterIndex: number | null = null;
 let deployRenderer: HexRenderer | null = null;
@@ -43,7 +42,6 @@ export function initPreBattle(preBattleDeps: PreBattleDeps): void {
 }
 
 export function hideAllPreBattleScreens(): void {
-  stopLobbyPolling();
   for (const id of ['lobby-browser', 'waiting-room', 'loadout-screen', 'deployment-screen']) {
     document.getElementById(id)?.classList.add('hidden');
   }
@@ -62,13 +60,6 @@ function requireDeps(): PreBattleDeps {
 function setStatus(elId: string, msg: string): void {
   const el = document.getElementById(elId);
   if (el) el.textContent = msg;
-}
-
-function stopLobbyPolling(): void {
-  if (lobbyPollTimer != null) {
-    clearInterval(lobbyPollTimer);
-    lobbyPollTimer = null;
-  }
 }
 
 function showScreen(screenId: string): void {
@@ -104,8 +95,10 @@ export function routeGamePhase(): void {
 function bindStaticHandlers(): void {
   document.getElementById('find-match-btn')?.addEventListener('click', () => showLobbyBrowser());
   document.getElementById('lobby-back-btn')?.addEventListener('click', () => showMainMenu());
+  document.getElementById('lobby-refresh-btn')?.addEventListener('click', () => void refreshLobbyList());
   document.getElementById('create-lobby-btn')?.addEventListener('click', () => void createLobby());
   document.getElementById('lobby-join-id-btn')?.addEventListener('click', () => void joinLobbyById());
+  document.getElementById('waiting-refresh-btn')?.addEventListener('click', () => void refreshSessionState());
   document.getElementById('waiting-leave-btn')?.addEventListener('click', () => void leaveLobby());
   document.getElementById('loadout-ready-btn')?.addEventListener('click', () => void toggleLoadoutReady());
   document.getElementById('deploy-ready-btn')?.addEventListener('click', () => void toggleDeploymentReady());
@@ -115,18 +108,39 @@ function bindStaticHandlers(): void {
 export function showLobbyBrowser(): void {
   showScreen('lobby-browser');
   void refreshLobbyList();
-  stopLobbyPolling();
-  lobbyPollTimer = setInterval(() => void refreshLobbyList(), 3000);
+}
+
+async function refreshSessionState(): Promise<void> {
+  const d = requireDeps();
+  const id = d.getGameId();
+  if (!id) return;
+
+  try {
+    const state = await gameClient.fetchGameState(id);
+    if (!state) {
+      setStatus('waiting-players', 'Could not fetch game state.');
+      return;
+    }
+    d.setGameState(d.applyGameState(state));
+    routeGamePhase();
+  } catch (err) {
+    setStatus('waiting-players', `Refresh failed: ${String(err)}`);
+  }
 }
 
 async function refreshLobbyList(): Promise<void> {
   const tbody = document.getElementById('lobby-table-body');
+  const refreshBtn = document.getElementById('lobby-refresh-btn') as HTMLButtonElement | null;
   if (!tbody) return;
+
+  if (refreshBtn) refreshBtn.disabled = true;
+  setStatus('lobby-browser-status', 'Loading lobbies...');
 
   try {
     const lobbies = await gameClient.listLobbies();
     if (lobbies.length === 0) {
       tbody.innerHTML = '<tr><td colspan="4">No open lobbies — create one!</td></tr>';
+      setStatus('lobby-browser-status', 'No open lobbies.');
       return;
     }
 
@@ -145,8 +159,12 @@ async function refreshLobbyList(): Promise<void> {
     tbody.querySelectorAll<HTMLButtonElement>('.join-lobby-row-btn').forEach((btn) => {
       btn.onclick = () => void joinLobby(btn.dataset.gameId!);
     });
+    setStatus('lobby-browser-status', `${lobbies.length} open lobby${lobbies.length === 1 ? '' : 'ies'}.`);
   } catch (err) {
     tbody.innerHTML = `<tr><td colspan="4">Failed to load lobbies: ${escapeHtml(String(err))}</td></tr>`;
+    setStatus('lobby-browser-status', `Failed: ${String(err)}`);
+  } finally {
+    if (refreshBtn) refreshBtn.disabled = false;
   }
 }
 
@@ -162,7 +180,6 @@ async function createLobby(): Promise<void> {
     d.setLocalPlayerId(0);
     d.ensureStateSubscription();
     d.setGameState(d.applyGameState(result.state));
-    stopLobbyPolling();
     showWaitingRoom();
   } catch (err) {
     setStatus('lobby-browser-status', `Failed: ${String(err)}`);
@@ -193,7 +210,6 @@ async function joinLobby(gameId: string): Promise<void> {
     d.setLocalPlayerId(1);
     d.ensureStateSubscription();
     d.setGameState(d.applyGameState(join.state));
-    stopLobbyPolling();
     routeGamePhase();
   } catch (err) {
     setStatus('lobby-browser-status', `Failed: ${String(err)}`);

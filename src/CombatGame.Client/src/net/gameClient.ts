@@ -123,6 +123,11 @@ export class GameClient {
     await this.connect();
     return this.connection.invoke('SendCommand', gameId, command);
   }
+
+  async fetchGameState(gameId: string): Promise<GameStateDto | null> {
+    await this.connect();
+    return this.connection.invoke<GameStateDto | null>('GetState', gameId);
+  }
 }
 
 export const gameClient = new GameClient();
