@@ -5,6 +5,10 @@ const PROJECT_ID = process.env.APPWRITE_PROJECT_ID ?? '6a574b63000d15c7e337';
 const API_KEY = process.env.APPWRITE_API_KEY;
 const FUNCTION_ID = 'game-api';
 
+function offsetToAxial(col, row) {
+  return { q: col - (row - (row & 1)) / 2, r: row };
+}
+
 async function invoke(body) {
   const client = new Client().setEndpoint(ENDPOINT).setProject(PROJECT_ID).setKey(API_KEY);
   const functions = new Functions(client);
@@ -22,19 +26,25 @@ async function main() {
   const created = await invoke({ action: 'createGame', mode: 'Hotseat' });
   if (!created.success) throw new Error(created.error);
   const gameId = created.gameId;
-  const brigade = created.state.brigades.find((b) => b.playerId === 0);
+  const tank = created.state.brigades.find((b) => b.unitType === 'Tank' && b.playerId === 0);
+  const start = offsetToAxial(3, 7);
+  const target = offsetToAxial(0, 7);
+
   const move = await invoke({
     action: 'sendCommand',
     gameId,
     command: {
       type: 'Move',
       playerId: 0,
-      brigadeId: brigade.id,
-      targetQ: brigade.q - 1,
-      targetR: brigade.r,
+      brigadeId: tank.id,
+      targetQ: target.q,
+      targetR: target.r,
     },
   });
+
+  console.log('tank at', tank.q, tank.r, '-> target', target.q, target.r);
   console.log('move success', move.success, move.error ?? '');
+  if (!move.success) process.exit(1);
 }
 
 main().catch((err) => {

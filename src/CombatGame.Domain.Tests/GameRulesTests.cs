@@ -474,6 +474,29 @@ public class TerrainTests
         Assert.Equal(16, state.Grid.Width);
         Assert.Equal(16, state.Grid.Height);
     }
+    [Fact]
+    public void CanMove_ToOffsetGridTile_WithNegativeAxialQ()
+    {
+        var state = DefaultSkirmishMap.Create(GameMode.Hotseat);
+        var tank = state.Brigades.First(b => b.UnitType == UnitType.Tank && b.PlayerId == 0);
+        var start = HexOffset.FromOddR(3, 7);
+        var target = HexOffset.FromOddR(0, 7);
+        tank.Position = start;
+        TestMapHelper.SetPlains(state, start, target, HexOffset.FromOddR(1, 7), HexOffset.FromOddR(2, 7));
+
+        Assert.Equal(-3, target.Q);
+
+        var result = GameEngine.Execute(state, new GameCommand
+        {
+            Type = CommandType.Move,
+            PlayerId = 0,
+            BrigadeId = tank.Id,
+            TargetCoord = target
+        });
+
+        Assert.True(result.Success);
+        Assert.Equal(target, tank.Position);
+    }
 }
 
 public class NoMoveAfterFireTests

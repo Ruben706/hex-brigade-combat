@@ -29,3 +29,23 @@ export function eachOffsetHex(
     }
   }
 }
+
+export function eachOffsetKey(width: number, height: number): string[] {
+  const keys: string[] = [];
+  eachOffsetHex(width, height, (_col, _row, hex) => {
+    keys.push(`${hex.q},${hex.r}`);
+  });
+  return keys;
+}
+
+export function hasCompleteOffsetTileSet(
+  tiles: Record<string, unknown>,
+  width: number,
+  height: number,
+): boolean {
+  if (width <= 0 || height <= 0) return false;
+  for (const key of eachOffsetKey(width, height)) {
+    if (!(key in tiles)) return false;
+  }
+  return true;
+}

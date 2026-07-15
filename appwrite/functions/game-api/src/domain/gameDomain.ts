@@ -1,7 +1,11 @@
 // Port of CombatGame.Domain — authoritative game rules for Appwrite Functions
 import { randomUUID } from 'node:crypto';
 import { generateMap, MAP_SIZE } from './mapGenerator.js';
-import { isOnOffsetGrid, offsetToAxial } from './hexOffset.js';
+import {
+  hasCompleteOffsetTileSet,
+  isOnOffsetGrid,
+  offsetToAxial,
+} from './hexOffset.js';
 import {
   type TileMap,
   type TerrainType,
@@ -579,24 +583,137 @@ export function hashGameId(gameId: string): number {
   return gameId.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
 }
 
-export function ensureMapGenerated(state: InternalGameState): void {
-  const tileCount = state.tiles ? Object.keys(state.tiles).length : 0;
-  const terrains = new Set(Object.values(state.tiles ?? {}));
-  const needsMap =
-    tileCount === 0 ||
-    terrains.size <= 1 ||
-    state.gridWidth !== MAP_SIZE ||
-    state.gridHeight !== MAP_SIZE;
+const PLAYER_SPAWNS: Record<number, HexCoord[]> = {
+  0: [
+    offsetToAxial(1, 7),
+    offsetToAxial(2, 8),
+    offsetToAxial(0, 6),
+    offsetToAxial(0, 9),
+    offsetToAxial(1, 10),
+  ],
+  1: [
+    offsetToAxial(14, 7),
+    offsetToAxial(13, 8),
+    offsetToAxial(15, 6),
+    offsetToAxial(15, 9),
+    offsetToAxial(14, 10),
+  ],
+};
 
-  if (!needsMap) {
-    return;
+function migrateBrigadePositions(state: InternalGameState): void {
+  const occupied = new Set<string>();
+
+  for (const brigade of state.brigades) {
+    const key = hexKey(brigade.position);
+    if (isOnOffsetGrid(brigade.position.q, brigade.position.r, state.gridWidth, state.gridHeight) && !occupied.has(key)) {
+      occupied.add(key);
+      continue;
+    }
+
+    const spawns = PLAYER_SPAWNS[brigade.playerId] ?? PLAYER_SPAWNS[0]!;
+    const open = spawns.find((spawn) => !occupied.has(hexKey(spawn))) ?? spawns[0]!;
+    brigade.position = { q: open.q, r: open.r };
+    occupied.add(hexKey(brigade.position));
+  }
+}
+
+function syncOffsetTiles(state: InternalGameState, generated: TileMap): void {
+  for (const [key, terrain] of Object.entries(generated)) {
+    state.tiles[key] = terrain;
   }
 
+  for (const key of Object.keys(state.tiles)) {
+    const [q, r] = key.split(',').map(Number);
+    if (!Number.isFinite(q) || !Number.isFinite(r) || !isOnOffsetGrid(q, r, state.gridWidth, state.gridHeight)) {
+      delete state.tiles[key];
+    }
+  }
+}
+
+function coerceTileMap(tiles: unknown): TileMap {
+  if (!tiles || typeof tiles !== 'object') return {};
+  if (Array.isArray(tiles)) {
+    const map: TileMap = {};
+    for (const tile of tiles as Array<{ q?: number; r?: number; terrain?: string }>) {
+      if (tile?.q === undefined || tile?.r === undefined || !tile.terrain) continue;
+      map[`${tile.q},${tile.r}`] = tile.terrain as TerrainType;
+    }
+    return map;
+  }
+  return { ...(tiles as TileMap) };
+}
+
+/** Normalize persisted JSON (camelCase/PascalCase, tile array vs map). */
+export function coerceInternalState(raw: Record<string, unknown>): InternalGameState {
+  const record = raw as Record<string, unknown> & InternalGameState;
+  const gameId = String(record.gameId ?? record['GameId'] ?? '');
+  const state: InternalGameState = {
+    gameId,
+    mode: (record.mode ?? record['Mode'] ?? 'Hotseat') as GameMode,
+    gridWidth: Number(record.gridWidth ?? record['GridWidth'] ?? MAP_SIZE),
+    gridHeight: Number(record.gridHeight ?? record['GridHeight'] ?? MAP_SIZE),
+    tiles: coerceTileMap(record.tiles ?? record['Tiles']),
+    brigades: Array.isArray(record.brigades ?? record['Brigades'])
+      ? (record.brigades ?? record['Brigades']) as Brigade[]
+      : [],
+    currentPlayerId: Number(record.currentPlayerId ?? record['CurrentPlayerId'] ?? 0),
+    turnNumber: Number(record.turnNumber ?? record['TurnNumber'] ?? 1),
+    phase: (record.phase ?? record['Phase'] ?? 'InProgress') as GamePhase,
+    winnerId: (record.winnerId ?? record['WinnerId'] ?? null) as number | null,
+    eventLog: Array.isArray(record.eventLog ?? record['EventLog'])
+      ? (record.eventLog ?? record['EventLog']) as GameEvent[]
+      : [],
+    connectedPlayers: Array.isArray(record.connectedPlayers ?? record['ConnectedPlayers'])
+      ? (record.connectedPlayers ?? record['ConnectedPlayers']) as number[]
+      : [],
+    aiPlayerId: Number(record.aiPlayerId ?? record['AiPlayerId'] ?? -1),
+    rngSeed: Number(record.rngSeed ?? record['RngSeed'] ?? hashGameId(gameId)),
+  };
+
+  for (const brigade of state.brigades) {
+    const legacy = brigade as Brigade & { q?: number; r?: number };
+    if (!brigade.position && legacy.q !== undefined && legacy.r !== undefined) {
+      brigade.position = { q: legacy.q, r: legacy.r };
+    }
+  }
+
+  return state;
+}
+
+/** Ensure a full odd-r offset map exists. Returns true when state was modified. */
+export function ensureMapGenerated(state: InternalGameState): boolean {
   const seed = state.rngSeed || hashGameId(state.gameId);
-  state.tiles = generateMap(seed);
+  const generated = generateMap(seed);
+  const before = JSON.stringify({
+    gridWidth: state.gridWidth,
+    gridHeight: state.gridHeight,
+    tiles: state.tiles,
+    brigades: state.brigades.map((b) => b.position),
+  });
+
+  const needsFullRegen =
+    state.gridWidth !== MAP_SIZE ||
+    state.gridHeight !== MAP_SIZE ||
+    !hasCompleteOffsetTileSet(state.tiles, MAP_SIZE, MAP_SIZE);
+
   state.gridWidth = MAP_SIZE;
   state.gridHeight = MAP_SIZE;
   state.rngSeed = seed;
+
+  if (needsFullRegen) {
+    state.tiles = { ...generated };
+    migrateBrigadePositions(state);
+  } else {
+    syncOffsetTiles(state, generated);
+  }
+
+  const after = JSON.stringify({
+    gridWidth: state.gridWidth,
+    gridHeight: state.gridHeight,
+    tiles: state.tiles,
+    brigades: state.brigades.map((b) => b.position),
+  });
+  return before !== after;
 }
 
 export function createSkirmish(mode: GameMode): InternalGameState {
@@ -637,6 +754,7 @@ export function createSkirmish(mode: GameMode): InternalGameState {
 // --- Game engine ---
 
 export function executeCommand(state: InternalGameState, command: GameCommand): CommandResult {
+  ensureMapGenerated(state);
   if (state.phase === 'Victory') return { success: false, error: 'Game is over.' };
   if (command.playerId !== state.currentPlayerId) return { success: false, error: 'Not your turn.' };
 

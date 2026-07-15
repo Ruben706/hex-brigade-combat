@@ -41,7 +41,15 @@ public sealed class HexGrid
 
     public bool Contains(HexCoord coord) => HexOffset.IsOnGrid(coord, Width, Height);
 
-    public TerrainType GetTerrain(HexCoord coord) => _tiles[coord].Terrain;
+    public TerrainType GetTerrain(HexCoord coord)
+    {
+        if (_tiles.TryGetValue(coord, out var tile))
+        {
+            return tile.Terrain;
+        }
+
+        return Contains(coord) ? TerrainType.Plains : throw new KeyNotFoundException($"Hex {coord} is not on the grid.");
+    }
 
     public void SetTerrain(HexCoord coord, TerrainType terrain)
     {
@@ -50,7 +58,28 @@ public sealed class HexGrid
             return;
         }
 
-        _tiles[coord].Terrain = terrain;
+        if (!_tiles.TryGetValue(coord, out var tile))
+        {
+            _tiles[coord] = new HexTile { Coord = coord, Terrain = terrain };
+            return;
+        }
+
+        tile.Terrain = terrain;
+    }
+
+    public void EnsureAllTiles()
+    {
+        for (var row = 0; row < Height; row++)
+        {
+            for (var col = 0; col < Width; col++)
+            {
+                var coord = HexOffset.FromOddR(col, row);
+                if (!_tiles.ContainsKey(coord))
+                {
+                    _tiles[coord] = new HexTile { Coord = coord };
+                }
+            }
+        }
     }
 
     public bool IsAdjacent(HexCoord a, HexCoord b) => a.DistanceTo(b) == 1;

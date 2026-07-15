@@ -58,6 +58,7 @@ public static class MapGenerator
         }
 
         EnsureSpawnZones(grid);
+        grid.EnsureAllTiles();
         return grid;
     }
 

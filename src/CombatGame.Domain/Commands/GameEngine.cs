@@ -58,6 +58,8 @@ public static class GameEngine
             return CommandResult.Fail("Target coordinate required.");
         }
 
+        state.Grid.EnsureAllTiles();
+
         var target = command.TargetCoord.Value;
         if (!state.Grid.Contains(target))
         {

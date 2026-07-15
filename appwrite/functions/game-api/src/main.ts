@@ -1,5 +1,6 @@
 import { Client, TablesDB } from 'node-appwrite';
 import {
+  coerceInternalState,
   createSkirmish,
   ensureMapGenerated,
   executeCommand,
@@ -32,8 +33,11 @@ async function loadState(
       tableId: TABLE_ID,
       rowId: gameId,
     });
-    const state = JSON.parse(row.state as string) as import('./domain/gameDomain.js').InternalGameState;
-    ensureMapGenerated(state);
+    const parsed = JSON.parse(row.state as string) as Record<string, unknown>;
+    const state = coerceInternalState(parsed);
+    if (ensureMapGenerated(state)) {
+      await saveState(tablesDB, state);
+    }
     return state;
   } catch {
     return null;
