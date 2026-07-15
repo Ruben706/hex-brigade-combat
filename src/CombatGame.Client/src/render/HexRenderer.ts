@@ -37,6 +37,9 @@ export interface DamagePopup {
 const DEFAULT_TILE_SIZE = 32;
 const TILE_GAP = 2;
 const BRIGADE_HIT_SCALE = 0.85;
+const MIN_ZOOM = 0.45;
+const MAX_ZOOM = 3.5;
+const ZOOM_WHEEL_FACTOR = 1.12;
 
 function terrainMovementCost(terrain: string): number {
   switch (terrain) {
@@ -59,11 +62,17 @@ export class HexRenderer {
   private ctx: CanvasRenderingContext2D;
   private width: number;
   private height: number;
-  private offsetX = 0;
-  private offsetY = 0;
   private gridWidth = 0;
   private gridHeight = 0;
-  private tileSize = DEFAULT_TILE_SIZE;
+  private fitTileSize = DEFAULT_TILE_SIZE;
+  private scale = 1;
+  private translateX = 0;
+  private translateY = 0;
+  private layoutReady = false;
+  private lastLayoutCanvasW = 0;
+  private lastLayoutCanvasH = 0;
+  private lastLayoutGridW = 0;
+  private lastLayoutGridH = 0;
 
   constructor(canvas: HTMLCanvasElement) {
     const ctx = canvas.getContext('2d');
@@ -80,47 +89,117 @@ export class HexRenderer {
     this.height = height;
   }
 
-  private cellStride(): number {
-    return this.tileSize + TILE_GAP;
+  private worldTileStride(): number {
+    return this.fitTileSize + TILE_GAP;
+  }
+
+  private screenTileSize(): number {
+    return this.fitTileSize * this.scale;
+  }
+
+  private worldTileCenter(q: number, r: number): { x: number; y: number } {
+    const stride = this.worldTileStride();
+    return {
+      x: q * stride + this.fitTileSize / 2,
+      y: r * stride + this.fitTileSize / 2,
+    };
+  }
+
+  private worldToScreen(wx: number, wy: number): { x: number; y: number } {
+    return {
+      x: wx * this.scale + this.translateX,
+      y: wy * this.scale + this.translateY,
+    };
+  }
+
+  private screenToWorld(sx: number, sy: number): { x: number; y: number } {
+    return {
+      x: (sx - this.translateX) / this.scale,
+      y: (sy - this.translateY) / this.scale,
+    };
+  }
+
+  private computeFitTileSize(gridWidth: number, gridHeight: number): number {
+    const stride = (size: number) => size + TILE_GAP;
+    const fitW = (this.width - 40) / (gridWidth * stride(1));
+    const fitH = (this.height - 40) / (gridHeight * stride(1));
+    return Math.max(18, Math.min(DEFAULT_TILE_SIZE, Math.floor(Math.min(fitW, fitH))));
+  }
+
+  private centerMap(): void {
+    const stride = this.worldTileStride();
+    const mapW = this.gridWidth * stride - TILE_GAP;
+    const mapH = this.gridHeight * stride - TILE_GAP;
+    this.translateX = (this.width - mapW * this.scale) / 2;
+    this.translateY = (this.height - mapH * this.scale) / 2;
+  }
+
+  /** Recompute tile fit for the grid; resets camera only when grid dimensions change. */
+  updateLayout(gridWidth: number, gridHeight: number, resetCamera = false): void {
+    const gridChanged = gridWidth !== this.lastLayoutGridW || gridHeight !== this.lastLayoutGridH;
+    const canvasChanged = this.width !== this.lastLayoutCanvasW || this.height !== this.lastLayoutCanvasH;
+    if (this.layoutReady && !gridChanged && !canvasChanged && !resetCamera) {
+      return;
+    }
+
+    this.gridWidth = gridWidth;
+    this.gridHeight = gridHeight;
+    this.fitTileSize = this.computeFitTileSize(gridWidth, gridHeight);
+    this.lastLayoutCanvasW = this.width;
+    this.lastLayoutCanvasH = this.height;
+    this.lastLayoutGridW = gridWidth;
+    this.lastLayoutGridH = gridHeight;
+
+    if (!this.layoutReady || resetCamera || gridChanged) {
+      this.scale = 1;
+      this.centerMap();
+      this.layoutReady = true;
+      return;
+    }
+
+    // Canvas resized: refit tile size and re-center, preserving zoom level.
+    this.centerMap();
+  }
+
+  panBy(dx: number, dy: number): void {
+    this.translateX += dx;
+    this.translateY += dy;
+  }
+
+  zoomAt(screenX: number, screenY: number, factor: number): void {
+    const world = this.screenToWorld(screenX, screenY);
+    const nextScale = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, this.scale * factor));
+    if (nextScale === this.scale) {
+      return;
+    }
+
+    this.scale = nextScale;
+    this.translateX = screenX - world.x * this.scale;
+    this.translateY = screenY - world.y * this.scale;
+  }
+
+  zoomWheel(screenX: number, screenY: number, deltaY: number): void {
+    const factor = deltaY < 0 ? ZOOM_WHEEL_FACTOR : 1 / ZOOM_WHEEL_FACTOR;
+    this.zoomAt(screenX, screenY, factor);
   }
 
   /** Center of tile in canvas space. q = column, r = row. */
   hexToPixel(q: number, r: number): { x: number; y: number } {
-    const { x, y } = this.tileToPixelUncentered(q, r);
-    return { x: x + this.offsetX, y: y + this.offsetY };
-  }
-
-  private tileToPixelUncentered(q: number, r: number): { x: number; y: number } {
-    const stride = this.cellStride();
-    return {
-      x: q * stride + this.tileSize / 2,
-      y: r * stride + this.tileSize / 2,
-    };
+    const world = this.worldTileCenter(q, r);
+    return this.worldToScreen(world.x, world.y);
   }
 
   pixelToHex(x: number, y: number): HexCoord {
-    const px = x - this.offsetX;
-    const py = y - this.offsetY;
-    const stride = this.cellStride();
-    const q = Math.floor(px / stride);
-    const r = Math.floor(py / stride);
+    const { x: wx, y: wy } = this.screenToWorld(x, y);
+    const stride = this.worldTileStride();
+    const q = Math.floor(wx / stride);
+    const r = Math.floor(wy / stride);
     return { q, r };
   }
 
+  /** @deprecated Use updateLayout — kept for callers that only need layout sync. */
   syncLayout(gridWidth: number, gridHeight: number): void {
-    this.gridWidth = gridWidth;
-    this.gridHeight = gridHeight;
-
-    const stride = (size: number) => size + TILE_GAP;
-    const fitW = (this.width - 40) / (gridWidth * stride(1));
-    const fitH = (this.height - 40) / (gridHeight * stride(1));
-    this.tileSize = Math.max(18, Math.min(DEFAULT_TILE_SIZE, Math.floor(Math.min(fitW, fitH))));
-
-    const s = this.cellStride();
-    const mapW = gridWidth * s - TILE_GAP;
-    const mapH = gridHeight * s - TILE_GAP;
-    this.offsetX = (this.width - mapW) / 2 + this.tileSize / 2;
-    this.offsetY = (this.height - mapH) / 2 + this.tileSize / 2;
+    this.updateLayout(gridWidth, gridHeight);
   }
 
   eventToCanvas(canvas: HTMLCanvasElement, event: MouseEvent): { x: number; y: number } {
@@ -135,7 +214,7 @@ export class HexRenderer {
 
   pickBrigade(x: number, y: number, brigades: BrigadeDto[]): BrigadeDto | null {
     let best: BrigadeDto | null = null;
-    let bestDistance = this.tileSize * BRIGADE_HIT_SCALE;
+    let bestDistance = this.screenTileSize() * BRIGADE_HIT_SCALE;
 
     for (const brigade of brigades) {
       const { x: bx, y: by } = this.hexToPixel(brigade.q, brigade.r);
@@ -154,7 +233,7 @@ export class HexRenderer {
   }
 
   pickNearestHex(x: number, y: number, candidates: HexCoord[], maxDistance?: number): HexCoord | null {
-    const limit = maxDistance ?? this.tileSize * 0.92;
+    const limit = maxDistance ?? this.screenTileSize() * 0.92;
     let best: HexCoord | null = null;
     let bestDistance = limit;
 
@@ -176,7 +255,7 @@ export class HexRenderer {
 
   render(state: GameStateDto, options: RenderOptions): void {
     this.ctx.clearRect(0, 0, this.width, this.height);
-    this.syncLayout(state.gridWidth, state.gridHeight);
+    this.updateLayout(state.gridWidth, state.gridHeight);
 
     const fogEnabled = options.visibleHexes !== null;
 
@@ -234,8 +313,8 @@ export class HexRenderer {
 
   private tileRect(q: number, r: number): { x: number; y: number; size: number } {
     const { x: cx, y: cy } = this.hexToPixel(q, r);
-    const half = this.tileSize / 2;
-    return { x: cx - half, y: cy - half, size: this.tileSize };
+    const half = this.screenTileSize() / 2;
+    return { x: cx - half, y: cy - half, size: this.screenTileSize() };
   }
 
   private drawTile(q: number, r: number, stroke: string, fill: string, strokeOverride?: string): void {
@@ -263,7 +342,8 @@ export class HexRenderer {
   private drawBrigade(brigade: BrigadeDto, selected: boolean): void {
     const { x, y } = this.hexToPixel(brigade.q, brigade.r);
     const color = PLAYER_COLORS[brigade.playerId] ?? '#888';
-    const radius = this.tileSize * 0.32;
+    const tileSize = this.screenTileSize();
+    const radius = tileSize * 0.32;
 
     this.ctx.beginPath();
     this.ctx.arc(x, y, radius, 0, Math.PI * 2);
@@ -274,13 +354,13 @@ export class HexRenderer {
     this.ctx.stroke();
 
     this.ctx.fillStyle = '#fff';
-    this.ctx.font = `bold ${Math.max(9, Math.round(this.tileSize * 0.34))}px Segoe UI, sans-serif`;
+    this.ctx.font = `bold ${Math.max(9, Math.round(tileSize * 0.34))}px Segoe UI, sans-serif`;
     this.ctx.textAlign = 'center';
     this.ctx.textBaseline = 'middle';
     this.ctx.fillText(UNIT_LABELS[brigade.unitType] ?? '?', x, y - 3);
 
     const hpPct = brigade.strength / brigade.maxStrength;
-    const barW = this.tileSize * 0.75;
+    const barW = tileSize * 0.75;
     const barH = 4;
     const barX = x - barW / 2;
     const barY = y + radius * 0.65;
@@ -300,13 +380,14 @@ export class HexRenderer {
   private drawDamagePopup(popup: DamagePopup): void {
     const { x, y } = this.hexToPixel(popup.q, popup.r);
     const floatOffset = (1 - popup.opacity) * 24;
+    const tileSize = this.screenTileSize();
 
     this.ctx.font = 'bold 14px Segoe UI, sans-serif';
     this.ctx.textAlign = 'center';
     this.ctx.textBaseline = 'middle';
     this.ctx.globalAlpha = popup.opacity;
     this.ctx.fillStyle = popup.text === 'MISS' ? '#9fb3c8' : '#ff6b6b';
-    this.ctx.fillText(popup.text, x, y - this.tileSize * 0.55 - floatOffset);
+    this.ctx.fillText(popup.text, x, y - tileSize * 0.55 - floatOffset);
     this.ctx.globalAlpha = 1;
   }
 }

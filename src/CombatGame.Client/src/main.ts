@@ -183,12 +183,7 @@ function showGame(): void {
     updateUi();
   });
 
-  canvas.addEventListener('click', (e) => {
-    if (!gameState || !hexRenderer) return;
-    hexRenderer.syncLayout(gameState.gridWidth, gameState.gridHeight);
-    const { x, y } = hexRenderer.eventToCanvas(canvas, e);
-    void handleCanvasClick(x, y);
-  });
+  setupCanvasCamera(canvas);
 
   window.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') {
@@ -203,6 +198,78 @@ function showGame(): void {
   });
 
   updateUi();
+}
+
+const DRAG_THRESHOLD_PX = 5;
+
+function setupCanvasCamera(canvas: HTMLCanvasElement): void {
+  let isPanning = false;
+  let panStartX = 0;
+  let panStartY = 0;
+  let dragStartX = 0;
+  let dragStartY = 0;
+  let didDrag = false;
+
+  canvas.addEventListener('mousedown', (e) => {
+    if (e.button !== 0 || !hexRenderer) return;
+    isPanning = true;
+    didDrag = false;
+    panStartX = e.clientX;
+    panStartY = e.clientY;
+    dragStartX = e.clientX;
+    dragStartY = e.clientY;
+    canvas.classList.add('is-panning');
+  });
+
+  window.addEventListener('mousemove', (e) => {
+    if (!isPanning || !hexRenderer) return;
+
+    const dx = e.clientX - panStartX;
+    const dy = e.clientY - panStartY;
+    if (!didDrag && Math.hypot(e.clientX - dragStartX, e.clientY - dragStartY) >= DRAG_THRESHOLD_PX) {
+      didDrag = true;
+    }
+
+    if (dx !== 0 || dy !== 0) {
+      const rect = canvas.getBoundingClientRect();
+      const scaleX = canvas.width / rect.width;
+      const scaleY = canvas.height / rect.height;
+      hexRenderer.panBy(dx * scaleX, dy * scaleY);
+      panStartX = e.clientX;
+      panStartY = e.clientY;
+      refreshCanvas();
+    }
+  });
+
+  const endPan = () => {
+    if (!isPanning) return;
+    isPanning = false;
+    canvas.classList.remove('is-panning');
+  };
+
+  window.addEventListener('mouseup', endPan);
+  canvas.addEventListener('mouseleave', endPan);
+
+  canvas.addEventListener(
+    'wheel',
+    (e) => {
+      if (!hexRenderer) return;
+      e.preventDefault();
+      const { x, y } = hexRenderer.eventToCanvas(canvas, e);
+      hexRenderer.zoomWheel(x, y, e.deltaY);
+      refreshCanvas();
+    },
+    { passive: false },
+  );
+
+  canvas.addEventListener('click', (e) => {
+    if (!gameState || !hexRenderer || didDrag) {
+      didDrag = false;
+      return;
+    }
+    const { x, y } = hexRenderer.eventToCanvas(canvas, e);
+    void handleCanvasClick(x, y);
+  });
 }
 
 function processCombatEvents(state: GameStateDto): void {

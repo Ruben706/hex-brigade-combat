@@ -109,6 +109,12 @@ button:disabled {
   width: 100%;
   display: block;
   border-radius: 4px;
+  cursor: grab;
+  touch-action: none;
+}
+
+#game-canvas.is-panning {
+  cursor: grabbing;
 }
 
 .side-panel {
