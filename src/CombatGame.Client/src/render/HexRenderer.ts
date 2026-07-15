@@ -10,6 +10,7 @@ export interface RenderOptions {
   selectedBrigadeId: string | null;
   highlightHexes: HexCoord[];
   attackHexes: HexCoord[];
+  rangeHexes: HexCoord[];
   damagePopups: DamagePopup[];
 }
 
@@ -135,6 +136,10 @@ export class HexRenderer {
       }
     }
 
+    for (const hex of options.rangeHexes) {
+      this.drawHexOutline(hex.q, hex.r, '#ffd166', 3);
+    }
+
     for (const brigade of state.brigades) {
       this.drawBrigade(brigade, brigade.id === options.selectedBrigadeId);
     }
@@ -162,6 +167,25 @@ export class HexRenderer {
     this.ctx.fill();
     this.ctx.strokeStyle = stroke;
     this.ctx.lineWidth = 1.5;
+    this.ctx.stroke();
+  }
+
+  private drawHexOutline(q: number, r: number, stroke: string, lineWidth: number): void {
+    const { x, y } = this.hexToPixel(q, r);
+    this.ctx.beginPath();
+    for (let i = 0; i < 6; i++) {
+      const angle = (Math.PI / 180) * (60 * i - 30);
+      const hx = x + HEX_SIZE * Math.cos(angle);
+      const hy = y + HEX_SIZE * Math.sin(angle);
+      if (i === 0) {
+        this.ctx.moveTo(hx, hy);
+      } else {
+        this.ctx.lineTo(hx, hy);
+      }
+    }
+    this.ctx.closePath();
+    this.ctx.strokeStyle = stroke;
+    this.ctx.lineWidth = lineWidth;
     this.ctx.stroke();
   }
 

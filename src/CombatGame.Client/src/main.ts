@@ -24,6 +24,7 @@ let gameState: GameStateDto | null = null;
 let localPlayerId = 0;
 let selectedBrigadeId: string | null = null;
 let actionMode: ActionMode = { kind: 'none' };
+let weaponHoverPreview: { brigadeId: string; range: number } | null = null;
 let hexRenderer: HexRenderer | null = null;
 let lastEventLogLength = 0;
 let damagePopupEntries: Array<{ q: number; r: number; text: string; createdAt: number }> = [];
@@ -259,17 +260,7 @@ function startPopupAnimation(): void {
 function updateUi(): void {
   if (!gameState || !hexRenderer) return;
 
-  const canvas = document.getElementById('game-canvas') as HTMLCanvasElement;
-  hexRenderer.resize(canvas.width, canvas.height);
-
-  const { moveHexes, attackHexes } = computeHighlights();
-  hexRenderer.render(gameState, {
-    selectedBrigadeId,
-    highlightHexes: moveHexes,
-    attackHexes,
-    damagePopups: getActiveDamagePopups(),
-  });
-
+  refreshCanvas();
   updateHeader();
   updateBrigadePanel();
   updateActionButtons();
@@ -277,16 +268,57 @@ function updateUi(): void {
   updateVictoryOverlay();
 }
 
-function computeHighlights(): { moveHexes: HexCoord[]; attackHexes: HexCoord[] } {
+function refreshCanvas(): void {
+  if (!gameState || !hexRenderer) return;
+
+  const canvas = document.getElementById('game-canvas') as HTMLCanvasElement;
+  hexRenderer.resize(canvas.width, canvas.height);
+
+  const { moveHexes, attackHexes, rangeHexes } = computeHighlights();
+  hexRenderer.render(gameState, {
+    selectedBrigadeId,
+    highlightHexes: moveHexes,
+    attackHexes,
+    rangeHexes,
+    damagePopups: getActiveDamagePopups(),
+  });
+}
+
+function computeHighlights(): {
+  moveHexes: HexCoord[];
+  attackHexes: HexCoord[];
+  rangeHexes: HexCoord[];
+} {
   const moveHexes: HexCoord[] = [];
   const attackHexes: HexCoord[] = [];
+  const rangeHexes: HexCoord[] = [];
 
-  if (!gameState || actionMode.kind === 'none') {
-    return { moveHexes, attackHexes };
+  if (!gameState) {
+    return { moveHexes, attackHexes, rangeHexes };
+  }
+
+  if (weaponHoverPreview) {
+    const brigade = gameState.brigades.find((b) => b.id === weaponHoverPreview!.brigadeId);
+    if (brigade) {
+      for (const hex of withinRange(brigade.q, brigade.r, weaponHoverPreview.range)) {
+        if (
+          hex.q >= 0 &&
+          hex.r >= 0 &&
+          hex.q < gameState.gridWidth &&
+          hex.r < gameState.gridHeight
+        ) {
+          rangeHexes.push(hex);
+        }
+      }
+    }
+  }
+
+  if (actionMode.kind === 'none') {
+    return { moveHexes, attackHexes, rangeHexes };
   }
 
   const brigade = gameState.brigades.find((b) => b.id === getActiveBrigadeId());
-  if (!brigade) return { moveHexes, attackHexes };
+  if (!brigade) return { moveHexes, attackHexes, rangeHexes };
 
   if (actionMode.kind === 'move' && brigade.movementPointsRemaining > 0 && !brigade.forfeitsActions) {
     const occupied = gameState.brigades
@@ -312,7 +344,7 @@ function computeHighlights(): { moveHexes: HexCoord[]; attackHexes: HexCoord[] }
     }
   }
 
-  return { moveHexes, attackHexes };
+  return { moveHexes, attackHexes, rangeHexes };
 }
 
 function getActiveBrigadeId(): string | null {
@@ -413,7 +445,17 @@ function updateActionButtons(): void {
       (brigade.forfeitsActions ||
         brigade.usedWeaponIds.includes(weapon.id) ||
         (brigade.unitType === 'Artillery' && !brigade.statusEffects.includes('ArtilleryReady')));
+    btn.onmouseenter = () => {
+      if (btn.disabled) return;
+      weaponHoverPreview = { brigadeId: brigade.id, range: weapon.range };
+      refreshCanvas();
+    };
+    btn.onmouseleave = () => {
+      weaponHoverPreview = null;
+      refreshCanvas();
+    };
     btn.onclick = () => {
+      weaponHoverPreview = null;
       if (isSelected) {
         cancelAction(false);
       } else {
@@ -442,6 +484,7 @@ function getControllingPlayerId(): number {
 
 function cancelAction(deselect: boolean): void {
   actionMode = { kind: 'none' };
+  weaponHoverPreview = null;
   if (deselect) {
     selectedBrigadeId = null;
   }
