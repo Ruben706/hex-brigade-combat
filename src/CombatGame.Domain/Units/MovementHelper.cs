@@ -1,0 +1,70 @@
+using CombatGame.Domain.Enums;
+using CombatGame.Domain.Hex;
+
+namespace CombatGame.Domain.Units;
+
+public static class MovementHelper
+{
+    public static int GetMovementRange(UnitType unitType) => unitType switch
+    {
+        UnitType.Tank => 2,
+        _ => 1
+    };
+
+    public static int GetMovementRange(Brigade brigade) => GetMovementRange(brigade.UnitType);
+
+    public static HashSet<HexCoord> GetReachableHexes(
+        HexCoord start,
+        int movementRange,
+        HexGrid grid,
+        IEnumerable<HexCoord> occupiedCoords)
+    {
+        var occupied = occupiedCoords.ToHashSet();
+        var reachable = new HashSet<HexCoord>();
+        var visited = new Dictionary<HexCoord, int> { [start] = 0 };
+        var queue = new Queue<(HexCoord coord, int cost)>();
+        queue.Enqueue((start, 0));
+
+        while (queue.Count > 0)
+        {
+            var (current, cost) = queue.Dequeue();
+            if (cost > 0)
+            {
+                reachable.Add(current);
+            }
+
+            if (cost >= movementRange)
+            {
+                continue;
+            }
+
+            for (var i = 0; i < 6; i++)
+            {
+                var neighbor = current.Neighbor(i);
+                if (!grid.Contains(neighbor) || occupied.Contains(neighbor))
+                {
+                    continue;
+                }
+
+                var nextCost = cost + 1;
+                if (visited.TryGetValue(neighbor, out var knownCost) && knownCost <= nextCost)
+                {
+                    continue;
+                }
+
+                visited[neighbor] = nextCost;
+                queue.Enqueue((neighbor, nextCost));
+            }
+        }
+
+        return reachable;
+    }
+
+    public static bool CanReach(
+        HexCoord start,
+        HexCoord target,
+        int movementRange,
+        HexGrid grid,
+        IEnumerable<HexCoord> occupiedCoords) =>
+        GetReachableHexes(start, movementRange, grid, occupiedCoords).Contains(target);
+}
