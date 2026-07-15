@@ -1,0 +1,16 @@
+{
+  "projectId": "hex-brigade-combat",
+  "functions": [
+    {
+      "$id": "game-api",
+      "name": "Game API",
+      "runtime": "node-18.0",
+      "entrypoint": "dist/main.js",
+      "path": "functions/game-api",
+      "execute": ["any"],
+      "events": [],
+      "schedule": "",
+      "timeout": 30
+    }
+  ]
+}

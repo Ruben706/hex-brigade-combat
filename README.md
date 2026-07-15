@@ -68,16 +68,35 @@ The Vite client deploys automatically to GitHub Pages on every push to `master` 
 2. Under **Build and deployment**, set **Source** to **GitHub Actions**
 3. Push to `master` — the deploy workflow runs automatically
 
-### Backend for production play
+### Backend (Appwrite)
 
-GitHub Pages hosts static files only. The game server (`CombatGame.Server`) must run elsewhere for multiplayer/hotseat to work online.
+Production uses **Appwrite** for game logic, database, and realtime sync. Local dev falls back to the .NET SignalR server when Appwrite env vars are not set.
 
-1. Host the .NET server (Azure, Railway, Fly.io, etc.) and note its public URL
-2. In the GitHub repo, go to **Settings** → **Secrets and variables** → **Actions** → **Variables**
-3. Add repository variable `VITE_HUB_URL` = `https://your-server.example.com/hub/game`
-4. Re-run the **Deploy to GitHub Pages** workflow
+See [`appwrite/SETUP.md`](appwrite/SETUP.md) for full setup. Summary:
 
-Without `VITE_HUB_URL`, the deployed site loads but cannot connect to a game server.
+1. Create an Appwrite project and `combat` / `games` database collection
+2. Deploy the `game-api` function: `cd appwrite && appwrite deploy function`
+3. Add GitHub repository variables (Settings → Actions → Variables):
+
+| Variable | Example |
+|----------|---------|
+| `VITE_APPWRITE_ENDPOINT` | `https://cloud.appwrite.io/v1` |
+| `VITE_APPWRITE_PROJECT_ID` | your project ID |
+| `VITE_APPWRITE_FUNCTION_ID` | deployed function ID |
+| `VITE_APPWRITE_DATABASE_ID` | `combat` |
+| `VITE_APPWRITE_GAMES_COLLECTION_ID` | `games` |
+
+4. Re-run **Deploy to GitHub Pages** after setting variables
+
+### Local development
+
+**With Appwrite:** copy `.env.example` to `.env.local` in `src/CombatGame.Client/` and fill in your Appwrite credentials.
+
+**Without Appwrite:** leave Appwrite vars empty and run the .NET server:
+
+```bash
+dotnet run --project src/CombatGame.Server
+```
 
 ### CI
 
@@ -91,7 +110,10 @@ Without `VITE_HUB_URL`, the deployed site loads but cannot connect to a game ser
 ```
 src/
 ├── CombatGame.Domain/     # Game rules (hex, units, combat, turns)
-├── CombatGame.Server/     # ASP.NET Core + SignalR hub
+├── CombatGame.Server/     # ASP.NET Core + SignalR hub (local dev)
 ├── CombatGame.Client/     # Vite + TypeScript canvas UI
 └── CombatGame.Domain.Tests/
+appwrite/
+├── functions/game-api/    # Appwrite Function (production backend)
+└── SETUP.md
 ```

@@ -37,7 +37,11 @@ jobs:
         run: npm run build
         env:
           VITE_BASE_PATH: /hex-brigade-combat/
-          VITE_HUB_URL: ${{ vars.VITE_HUB_URL }}
+          VITE_APPWRITE_ENDPOINT: ${{ vars.VITE_APPWRITE_ENDPOINT }}
+          VITE_APPWRITE_PROJECT_ID: ${{ vars.VITE_APPWRITE_PROJECT_ID }}
+          VITE_APPWRITE_FUNCTION_ID: ${{ vars.VITE_APPWRITE_FUNCTION_ID }}
+          VITE_APPWRITE_DATABASE_ID: ${{ vars.VITE_APPWRITE_DATABASE_ID }}
+          VITE_APPWRITE_GAMES_COLLECTION_ID: ${{ vars.VITE_APPWRITE_GAMES_COLLECTION_ID }}
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3

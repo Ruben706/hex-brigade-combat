@@ -1,5 +1,5 @@
 import './style.css';
-import { gameClient } from './net/gameClient';
+import { gameClient, getBackendName } from './net/index';
 import {
   getReachableHexes,
   HexRenderer,
@@ -327,7 +327,7 @@ function updateHeader(): void {
 
   const isMyTurn = canActAsCurrentPlayer();
   turnInfo.textContent = `Turn ${gameState.turnNumber} — Player ${gameState.currentPlayerId}'s turn`;
-  playerInfo.textContent = `You: Player ${localPlayerId} (${PLAYER_COLORS[localPlayerId]})`;
+  playerInfo.textContent = `You: Player ${localPlayerId} | Backend: ${getBackendName()}`;
   playerInfo.style.color = PLAYER_COLORS[localPlayerId];
   endBtn.disabled = !isMyTurn || gameState.phase === 'Victory';
 }
