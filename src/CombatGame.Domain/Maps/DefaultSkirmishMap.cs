@@ -7,13 +7,14 @@ namespace CombatGame.Domain.Maps;
 
 public static class DefaultSkirmishMap
 {
-    public const int Width = 12;
-    public const int Height = 8;
+    public const int Width = MapGenerator.MapSize;
+    public const int Height = MapGenerator.MapSize;
 
     public static GameState Create(GameMode mode)
     {
-        var grid = new HexGrid(Width, Height);
         var gameId = Guid.NewGuid();
+        var rng = new Random(gameId.GetHashCode());
+        var grid = MapGenerator.Generate(rng);
         var state = new GameState
         {
             GameId = gameId,
@@ -21,25 +22,25 @@ public static class DefaultSkirmishMap
             Grid = grid,
             CurrentPlayerId = 0,
             AiPlayerId = mode == GameMode.VsAi ? 1 : -1,
-            Rng = new Random(gameId.GetHashCode())
+            Rng = rng
         };
 
         var player0Units = new (UnitType type, HexCoord pos)[]
         {
-            (UnitType.Scout, new HexCoord(2, 3)),
-            (UnitType.Infantry, new HexCoord(1, 4)),
-            (UnitType.Tank, new HexCoord(0, 3)),
-            (UnitType.Artillery, new HexCoord(0, 1)),
-            (UnitType.AntiTank, new HexCoord(0, 5))
+            (UnitType.Scout, new HexCoord(1, 7)),
+            (UnitType.Infantry, new HexCoord(2, 8)),
+            (UnitType.Tank, new HexCoord(0, 6)),
+            (UnitType.Artillery, new HexCoord(0, 9)),
+            (UnitType.AntiTank, new HexCoord(1, 10))
         };
 
         var player1Units = new (UnitType type, HexCoord pos)[]
         {
-            (UnitType.Scout, new HexCoord(9, 3)),
-            (UnitType.Infantry, new HexCoord(10, 4)),
-            (UnitType.Tank, new HexCoord(11, 3)),
-            (UnitType.Artillery, new HexCoord(11, 1)),
-            (UnitType.AntiTank, new HexCoord(11, 5))
+            (UnitType.Scout, new HexCoord(14, 7)),
+            (UnitType.Infantry, new HexCoord(13, 8)),
+            (UnitType.Tank, new HexCoord(15, 6)),
+            (UnitType.Artillery, new HexCoord(15, 9)),
+            (UnitType.AntiTank, new HexCoord(14, 10))
         };
 
         foreach (var (type, pos) in player0Units)

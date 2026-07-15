@@ -2,14 +2,18 @@ namespace CombatGame.Domain.Hex;
 
 public enum TerrainType
 {
-    Open,
-    Rough
+    Plains,
+    Forest,
+    ShallowWater,
+    DeepWater,
+    Mountain,
+    Hill
 }
 
 public sealed class HexTile
 {
-    public HexCoord Coord { get; init; }
-    public TerrainType Terrain { get; init; } = TerrainType.Open;
+    public required HexCoord Coord { get; init; }
+    public TerrainType Terrain { get; set; } = TerrainType.Plains;
 }
 
 public sealed class HexGrid
@@ -36,6 +40,13 @@ public sealed class HexGrid
     }
 
     public bool Contains(HexCoord coord) => _tiles.ContainsKey(coord);
+
+    public TerrainType GetTerrain(HexCoord coord) => _tiles[coord].Terrain;
+
+    public void SetTerrain(HexCoord coord, TerrainType terrain)
+    {
+        _tiles[coord].Terrain = terrain;
+    }
 
     public bool IsAdjacent(HexCoord a, HexCoord b) => a.DistanceTo(b) == 1;
 }

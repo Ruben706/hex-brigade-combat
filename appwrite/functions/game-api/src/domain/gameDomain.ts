@@ -1,5 +1,15 @@
 // Port of CombatGame.Domain — authoritative game rules for Appwrite Functions
 import { randomUUID } from 'node:crypto';
+import { generateMap, MAP_SIZE } from './mapGenerator.js';
+import {
+  type TileMap,
+  type TerrainType,
+  concealsUnits,
+  getDefenseMultiplier as getTerrainDefenseMultiplier,
+  getMovementCost,
+  getTerrain,
+  isPassable,
+} from './terrain.js';
 
 export type UnitType = 'Scout' | 'Infantry' | 'Tank' | 'Artillery' | 'AntiTank';
 export type DamageCategory = 'SmallArms' | 'HighExplosive' | 'AntiArmor';
@@ -38,6 +48,7 @@ export interface BrigadeTurnState {
   hasUsedAbility: boolean;
   forfeitsActions: boolean;
   movementPointsRemaining: number;
+  revealedFromForest: boolean;
   usedWeaponIds: string[];
 }
 
@@ -71,6 +82,7 @@ export interface InternalGameState {
   mode: GameMode;
   gridWidth: number;
   gridHeight: number;
+  tiles: TileMap;
   brigades: Brigade[];
   currentPlayerId: number;
   turnNumber: number;
@@ -103,6 +115,7 @@ export interface GameStateDto {
   mode: string;
   gridWidth: number;
   gridHeight: number;
+  tiles: TileDto[];
   currentPlayerId: number;
   turnNumber: number;
   phase: string;
@@ -111,6 +124,12 @@ export interface GameStateDto {
   brigades: BrigadeDto[];
   eventLog: GameEvent[];
   connectedPlayers: number[];
+}
+
+export interface TileDto {
+  q: number;
+  r: number;
+  terrain: string;
 }
 
 export interface BrigadeDto {
@@ -134,6 +153,7 @@ export interface BrigadeDto {
   movementRange: number;
   movementPointsRemaining: number;
   visionRange: number;
+  revealedFromForest: boolean;
   currentAccuracy: number;
 }
 
@@ -270,6 +290,7 @@ export function createBrigade(type: UnitType, playerId: number, position: HexCoo
       hasUsedAbility: false,
       forfeitsActions: false,
       movementPointsRemaining: getMovementPointsForUnit(type),
+      revealedFromForest: false,
       usedWeaponIds: [],
     },
     movedLastTurn: false,
@@ -328,8 +349,12 @@ export function getVisionRangeForUnit(unitType: UnitType): number {
   }
 }
 
-export function getVisionRange(b: Brigade): number {
-  return getVisionRangeForUnit(b.unitType);
+export function getVisionRange(b: Brigade, tiles: TileMap): number {
+  let range = getVisionRangeForUnit(b.unitType);
+  if (getTerrain(tiles, b.position.q, b.position.r) === 'Hill') {
+    range += 1;
+  }
+  return range;
 }
 
 export function getMovementPoints(b: Brigade): number {
@@ -340,7 +365,14 @@ function resetMovementPoints(b: Brigade): void {
   b.turnState.movementPointsRemaining = getMovementPoints(b);
 }
 
-function getReachableHexes(start: HexCoord, range: number, gridW: number, gridH: number, occupied: Set<string>): HexCoord[] {
+function getReachableHexes(
+  start: HexCoord,
+  range: number,
+  gridW: number,
+  gridH: number,
+  occupied: Set<string>,
+  tiles: TileMap,
+): HexCoord[] {
   const reachable: HexCoord[] = [];
   const visited = new Map<string, number>([[hexKey(start), 0]]);
   const queue: Array<{ c: HexCoord; cost: number }> = [{ c: start, cost: 0 }];
@@ -355,7 +387,14 @@ function getReachableHexes(start: HexCoord, range: number, gridW: number, gridH:
       if (n.q < 0 || n.r < 0 || n.q >= gridW || n.r >= gridH) continue;
       const key = hexKey(n);
       if (occupied.has(key)) continue;
-      const next = cost + 1;
+
+      const terrain = getTerrain(tiles, n.q, n.r);
+      if (!isPassable(terrain)) continue;
+
+      const stepCost = getMovementCost(terrain);
+      const next = cost + stepCost;
+      if (next > range) continue;
+
       const known = visited.get(key);
       if (known !== undefined && known <= next) continue;
       visited.set(key, next);
@@ -372,6 +411,7 @@ function tryGetMovementCost(
   gridW: number,
   gridH: number,
   occupied: Set<string>,
+  tiles: TileMap,
 ): number | null {
   if (start.q === target.q && start.r === target.r) return null;
 
@@ -387,7 +427,14 @@ function tryGetMovementCost(
       if (n.q < 0 || n.r < 0 || n.q >= gridW || n.r >= gridH) continue;
       const key = hexKey(n);
       if (occupied.has(key)) continue;
-      const next = cost + 1;
+
+      const terrain = getTerrain(tiles, n.q, n.r);
+      if (!isPassable(terrain)) continue;
+
+      const stepCost = getMovementCost(terrain);
+      const next = cost + stepCost;
+      if (next > range) continue;
+
       const known = visited.get(key);
       if (known !== undefined && known <= next) continue;
       visited.set(key, next);
@@ -415,13 +462,14 @@ export function getAccuracy(b: Brigade): number {
   return b.turnState.hasMoved ? 0.5 : 1.0;
 }
 
-function getDefenseMultiplier(b: Brigade): number {
+function getDefenseMultiplier(b: Brigade, tiles: TileMap): number {
   let m = 1 + b.baseDefense / 100;
   if (hasStatus(b, 'Fortified')) m *= 1.5;
   if (hasStatus(b, 'Ambush')) m *= 1.3;
   if (b.upgrades.includes('VeteranDefense')) m *= 1.2;
   if (b.upgrades.includes('ReinforcedArmor')) m *= 1.3;
   if (b.upgrades.includes('Camouflage') && !b.movedLastTurn) m *= 1.15;
+  m *= getTerrainDefenseMultiplier(getTerrain(tiles, b.position.q, b.position.r));
   return m;
 }
 
@@ -432,16 +480,22 @@ function getAttackMultiplier(attacker: Brigade, weapon: Weapon): number {
   return m;
 }
 
-function calculateDamage(weapon: Weapon, attacker: Brigade, defender: Brigade): number {
+function calculateDamage(weapon: Weapon, attacker: Brigade, defender: Brigade, tiles: TileMap): number {
   const eff = getEffectiveness(weapon.category, getArmorClass(defender));
   const raw = weapon.baseDamage * eff * getAttackMultiplier(attacker, weapon);
-  return Math.max(1, Math.round(raw / getDefenseMultiplier(defender)));
+  return Math.max(1, Math.round(raw / getDefenseMultiplier(defender, tiles)));
 }
 
-function resolveAttack(weapon: Weapon, attacker: Brigade, defender: Brigade, rng: SeededRng): { hit: boolean; damage: number; accuracy: number } {
+function resolveAttack(
+  weapon: Weapon,
+  attacker: Brigade,
+  defender: Brigade,
+  rng: SeededRng,
+  tiles: TileMap,
+): { hit: boolean; damage: number; accuracy: number } {
   const accuracy = getAccuracy(attacker);
   if (rng.next() > accuracy) return { hit: false, damage: 0, accuracy };
-  return { hit: true, damage: calculateDamage(weapon, attacker, defender), accuracy };
+  return { hit: true, damage: calculateDamage(weapon, attacker, defender, tiles), accuracy };
 }
 
 // --- Game state helpers ---
@@ -501,6 +555,7 @@ function resetTurnStates(state: InternalGameState): void {
     b.turnState.hasMoved = false;
     b.turnState.hasUsedAbility = false;
     b.turnState.forfeitsActions = false;
+    b.turnState.revealedFromForest = false;
     b.turnState.usedWeaponIds = [];
     resetMovementPoints(b);
   }
@@ -521,11 +576,14 @@ function endTurn(state: InternalGameState): void {
 
 export function createSkirmish(mode: GameMode): InternalGameState {
   const gameId = randomUUID();
+  const rngSeed = gameId.split('').reduce((a, c) => a + c.charCodeAt(0), 0);
+  const tiles = generateMap(rngSeed);
   const state: InternalGameState = {
     gameId,
     mode,
-    gridWidth: 12,
-    gridHeight: 8,
+    gridWidth: MAP_SIZE,
+    gridHeight: MAP_SIZE,
+    tiles,
     brigades: [],
     currentPlayerId: 0,
     turnNumber: 1,
@@ -534,16 +592,16 @@ export function createSkirmish(mode: GameMode): InternalGameState {
     eventLog: [],
     connectedPlayers: [],
     aiPlayerId: mode === 'VsAi' ? 1 : -1,
-    rngSeed: gameId.split('').reduce((a, c) => a + c.charCodeAt(0), 0),
+    rngSeed,
   };
 
   const p0: Array<[UnitType, HexCoord]> = [
-    ['Scout', { q: 2, r: 3 }], ['Infantry', { q: 1, r: 4 }],
-    ['Tank', { q: 0, r: 3 }], ['Artillery', { q: 0, r: 1 }], ['AntiTank', { q: 0, r: 5 }],
+    ['Scout', { q: 1, r: 7 }], ['Infantry', { q: 2, r: 8 }],
+    ['Tank', { q: 0, r: 6 }], ['Artillery', { q: 0, r: 9 }], ['AntiTank', { q: 1, r: 10 }],
   ];
   const p1: Array<[UnitType, HexCoord]> = [
-    ['Scout', { q: 9, r: 3 }], ['Infantry', { q: 10, r: 4 }],
-    ['Tank', { q: 11, r: 3 }], ['Artillery', { q: 11, r: 1 }], ['AntiTank', { q: 11, r: 5 }],
+    ['Scout', { q: 14, r: 7 }], ['Infantry', { q: 13, r: 8 }],
+    ['Tank', { q: 15, r: 6 }], ['Artillery', { q: 15, r: 9 }], ['AntiTank', { q: 14, r: 10 }],
   ];
   for (const [t, pos] of p0) state.brigades.push(createBrigade(t, 0, pos));
   for (const [t, pos] of p1) state.brigades.push(createBrigade(t, 1, pos));
@@ -573,6 +631,7 @@ function execMove(state: InternalGameState, cmd: GameCommand): CommandResult {
   if (!b || b.playerId !== cmd.playerId) return { success: false, error: 'Brigade not found.' };
   if (b.turnState.movementPointsRemaining <= 0) return { success: false, error: 'No movement points remaining.' };
   if (b.turnState.forfeitsActions) return { success: false, error: 'Brigade cannot act this turn.' };
+  if (b.turnState.usedWeaponIds.length > 0) return { success: false, error: 'Cannot move after firing.' };
   if (!cmd.targetCoord) return { success: false, error: 'Target coordinate required.' };
 
   const t = cmd.targetCoord;
@@ -588,6 +647,7 @@ function execMove(state: InternalGameState, cmd: GameCommand): CommandResult {
     state.gridWidth,
     state.gridHeight,
     occupied,
+    state.tiles,
   );
   if (moveCost === null) {
     return { success: false, error: 'Target is out of movement range.' };
@@ -623,8 +683,12 @@ function execWeapon(state: InternalGameState, cmd: GameCommand, rng: SeededRng):
   const target = getBrigadeAt(state, cmd.targetCoord);
   if (!target || target.playerId === b.playerId) return { success: false, error: 'Must target an enemy brigade.' };
 
-  const attack = resolveAttack(weapon, b, target, rng);
+  const attack = resolveAttack(weapon, b, target, rng, state.tiles);
   b.turnState.usedWeaponIds.push(weapon.id);
+
+  if (concealsUnits(getTerrain(state.tiles, b.position.q, b.position.r))) {
+    b.turnState.revealedFromForest = true;
+  }
 
   if (!attack.hit) {
     addEvent(state, 'Missed',
@@ -735,7 +799,7 @@ function tryAttack(state: InternalGameState, b: Brigade, ai: number): boolean {
 }
 
 function tryMoveTowardEnemy(state: InternalGameState, b: Brigade, ai: number): boolean {
-  if (b.turnState.movementPointsRemaining <= 0 || b.turnState.forfeitsActions) return false;
+  if (b.turnState.movementPointsRemaining <= 0 || b.turnState.forfeitsActions || b.turnState.usedWeaponIds.length > 0) return false;
   const enemies = state.brigades.filter((br) => br.playerId !== ai);
   if (enemies.length === 0) return false;
 
@@ -749,6 +813,7 @@ function tryMoveTowardEnemy(state: InternalGameState, b: Brigade, ai: number): b
     state.gridWidth,
     state.gridHeight,
     occupied,
+    state.tiles,
   );
 
   let best: HexCoord | null = null;
@@ -769,6 +834,10 @@ export function toDto(state: InternalGameState): GameStateDto {
     mode: state.mode,
     gridWidth: state.gridWidth,
     gridHeight: state.gridHeight,
+    tiles: Object.entries(state.tiles).map(([key, terrain]) => {
+      const [q, r] = key.split(',').map(Number);
+      return { q, r, terrain };
+    }),
     currentPlayerId: state.currentPlayerId,
     turnNumber: state.turnNumber,
     phase: state.phase,
@@ -795,7 +864,8 @@ export function toDto(state: InternalGameState): GameStateDto {
       abilities: getAbilities(b),
       movementRange: getMovementPoints(b),
       movementPointsRemaining: b.turnState.movementPointsRemaining,
-      visionRange: getVisionRange(b),
+      visionRange: getVisionRange(b, state.tiles),
+      revealedFromForest: b.turnState.revealedFromForest,
       currentAccuracy: getAccuracy(b),
     })),
     eventLog: [...state.eventLog],
@@ -803,11 +873,17 @@ export function toDto(state: InternalGameState): GameStateDto {
 }
 
 export function fromDto(dto: GameStateDto): InternalGameState {
+  const tiles: TileMap = {};
+  for (const tile of dto.tiles ?? []) {
+    tiles[`${tile.q},${tile.r}`] = tile.terrain as TerrainType;
+  }
+
   return {
     gameId: dto.gameId,
     mode: dto.mode as GameMode,
     gridWidth: dto.gridWidth,
     gridHeight: dto.gridHeight,
+    tiles,
     currentPlayerId: dto.currentPlayerId,
     turnNumber: dto.turnNumber,
     phase: dto.phase as GamePhase,
@@ -834,6 +910,7 @@ export function fromDto(dto: GameStateDto): InternalGameState {
         forfeitsActions: b.forfeitsActions,
         movementPointsRemaining:
           b.movementPointsRemaining ?? getMovementPointsForUnit(b.unitType as UnitType),
+        revealedFromForest: b.revealedFromForest ?? false,
         usedWeaponIds: [...b.usedWeaponIds],
       },
     })),

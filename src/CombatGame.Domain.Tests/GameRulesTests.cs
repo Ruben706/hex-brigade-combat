@@ -8,6 +8,20 @@ using CombatGame.Domain.Units;
 
 namespace CombatGame.Domain.Tests;
 
+internal static class TestMapHelper
+{
+    public static void SetPlains(GameState state, params HexCoord[] coords)
+    {
+        foreach (var coord in coords)
+        {
+            if (state.Grid.Contains(coord))
+            {
+                state.Grid.SetTerrain(coord, TerrainType.Plains);
+            }
+        }
+    }
+}
+
 public class DamageCalculatorTests
 {
     [Theory]
@@ -49,8 +63,8 @@ public class ArtillerySetupTests
         var state = DefaultSkirmishMap.Create(GameMode.Hotseat);
         var artillery = state.Brigades.First(b => b.UnitType == UnitType.Artillery && b.PlayerId == 0);
         var enemy = state.Brigades.First(b => b.PlayerId == 1);
-        artillery.Position = new HexCoord(5, 3);
-        enemy.Position = new HexCoord(8, 3);
+        artillery.Position = new HexCoord(5, 7);
+        enemy.Position = new HexCoord(8, 7);
         return state;
     }
 
@@ -151,6 +165,7 @@ public class DigInTests
         Assert.True(infantry.HasStatus(StatusEffectType.Fortified));
 
         var target = new HexCoord(infantry.Position.Q + 1, infantry.Position.R);
+        TestMapHelper.SetPlains(state, target);
         GameEngine.Execute(state, new GameCommand
         {
             Type = CommandType.Move,
@@ -172,6 +187,7 @@ public class TurnActionLimitTests
         var infantry = state.Brigades.First(b => b.UnitType == UnitType.Infantry && b.PlayerId == 0);
         var second = new HexCoord(infantry.Position.Q + 2, infantry.Position.R);
         var third = new HexCoord(second.Q + 1, second.R);
+        TestMapHelper.SetPlains(state, new HexCoord(infantry.Position.Q + 1, infantry.Position.R), second, third);
 
         Assert.True(GameEngine.Execute(state, new GameCommand
         {
@@ -226,8 +242,8 @@ public class TurnActionLimitTests
         var state = DefaultSkirmishMap.Create(GameMode.Hotseat);
         var tank = state.Brigades.First(b => b.UnitType == UnitType.Tank && b.PlayerId == 0);
         var enemyInfantry = state.Brigades.First(b => b.UnitType == UnitType.Infantry && b.PlayerId == 1);
-        tank.Position = new HexCoord(5, 3);
-        enemyInfantry.Position = new HexCoord(7, 3);
+        tank.Position = new HexCoord(5, 7);
+        enemyInfantry.Position = new HexCoord(7, 7);
 
         var gunResult = GameEngine.Execute(state, new GameCommand
         {
@@ -276,18 +292,20 @@ public class MovementTests
     {
         var state = DefaultSkirmishMap.Create(GameMode.Hotseat);
         var tank = state.Brigades.First(b => b.UnitType == UnitType.Tank && b.PlayerId == 0);
-        tank.Position = new HexCoord(4, 6);
+        tank.Position = new HexCoord(5, 7);
+        TestMapHelper.SetPlains(state,
+            new HexCoord(6, 7), new HexCoord(7, 7), new HexCoord(8, 7), new HexCoord(9, 7));
 
         var result = GameEngine.Execute(state, new GameCommand
         {
             Type = CommandType.Move,
             PlayerId = 0,
             BrigadeId = tank.Id,
-            TargetCoord = new HexCoord(8, 6)
+            TargetCoord = new HexCoord(9, 7)
         });
 
         Assert.True(result.Success);
-        Assert.Equal(new HexCoord(8, 6), tank.Position);
+        Assert.Equal(new HexCoord(9, 7), tank.Position);
         Assert.Equal(0, tank.TurnState.MovementPointsRemaining);
     }
 
@@ -296,18 +314,19 @@ public class MovementTests
     {
         var state = DefaultSkirmishMap.Create(GameMode.Hotseat);
         var infantry = state.Brigades.First(b => b.UnitType == UnitType.Infantry && b.PlayerId == 0);
-        infantry.Position = new HexCoord(5, 3);
+        infantry.Position = new HexCoord(5, 7);
+        TestMapHelper.SetPlains(state, new HexCoord(6, 7), new HexCoord(7, 7));
 
         var result = GameEngine.Execute(state, new GameCommand
         {
             Type = CommandType.Move,
             PlayerId = 0,
             BrigadeId = infantry.Id,
-            TargetCoord = new HexCoord(7, 3)
+            TargetCoord = new HexCoord(7, 7)
         });
 
         Assert.True(result.Success);
-        Assert.Equal(new HexCoord(7, 3), infantry.Position);
+        Assert.Equal(new HexCoord(7, 7), infantry.Position);
         Assert.Equal(0, infantry.TurnState.MovementPointsRemaining);
     }
 
@@ -316,14 +335,14 @@ public class MovementTests
     {
         var state = DefaultSkirmishMap.Create(GameMode.Hotseat);
         var infantry = state.Brigades.First(b => b.UnitType == UnitType.Infantry && b.PlayerId == 0);
-        infantry.Position = new HexCoord(5, 3);
+        infantry.Position = new HexCoord(5, 7);
 
         var result = GameEngine.Execute(state, new GameCommand
         {
             Type = CommandType.Move,
             PlayerId = 0,
             BrigadeId = infantry.Id,
-            TargetCoord = new HexCoord(8, 3)
+            TargetCoord = new HexCoord(8, 7)
         });
 
         Assert.False(result.Success);
@@ -346,12 +365,12 @@ public class VisionTests
     {
         var state = DefaultSkirmishMap.Create(GameMode.Hotseat);
         var scout = state.Brigades.First(b => b.UnitType == UnitType.Scout && b.PlayerId == 0);
-        scout.Position = new HexCoord(5, 3);
+        scout.Position = new HexCoord(5, 7);
 
         var visible = VisionHelper.GetVisibleHexes([scout], state.Grid);
 
-        Assert.Contains(new HexCoord(10, 3), visible);
-        Assert.DoesNotContain(new HexCoord(11, 3), visible);
+        Assert.Contains(new HexCoord(10, 7), visible);
+        Assert.DoesNotContain(new HexCoord(11, 7), visible);
     }
 }
 
@@ -378,8 +397,8 @@ public class AccuracyTests
         var state = DefaultSkirmishMap.Create(GameMode.Hotseat);
         var tank = state.Brigades.First(b => b.UnitType == UnitType.Tank && b.PlayerId == 0);
         var enemy = state.Brigades.First(b => b.PlayerId == 1);
-        tank.Position = new HexCoord(5, 3);
-        enemy.Position = new HexCoord(7, 3);
+        tank.Position = new HexCoord(5, 7);
+        enemy.Position = new HexCoord(7, 7);
         tank.TurnState.HasMoved = true;
         state.Rng = new Random(0);
 
@@ -394,5 +413,98 @@ public class AccuracyTests
 
         Assert.True(result.Success);
         Assert.Contains(state.EventLog, e => e.Type == GameEventType.Missed);
+    }
+}
+
+public class TerrainTests
+{
+    [Fact]
+    public void Forest_IncreasesDefense()
+    {
+        var grid = new HexGrid(4, 4);
+        grid.SetTerrain(new HexCoord(1, 1), TerrainType.Forest);
+        var defender = UnitCatalog.CreateBrigade(UnitType.Infantry, 1, new HexCoord(1, 1));
+        var attacker = UnitCatalog.CreateBrigade(UnitType.Infantry, 0, new HexCoord(0, 1));
+        var rifle = UnitCatalog.GetWeapons(attacker).First();
+
+        var onForest = DamageCalculator.CalculateDamage(rifle, attacker, defender, grid);
+        grid.SetTerrain(new HexCoord(1, 1), TerrainType.Plains);
+        var onPlains = DamageCalculator.CalculateDamage(rifle, attacker, defender, grid);
+
+        Assert.True(onForest < onPlains);
+    }
+
+    [Fact]
+    public void Infantry_CannotEnterDeepWater()
+    {
+        var state = DefaultSkirmishMap.Create(GameMode.Hotseat);
+        var infantry = state.Brigades.First(b => b.UnitType == UnitType.Infantry && b.PlayerId == 0);
+        infantry.Position = new HexCoord(5, 7);
+        state.Grid.SetTerrain(new HexCoord(6, 7), TerrainType.DeepWater);
+
+        var result = GameEngine.Execute(state, new GameCommand
+        {
+            Type = CommandType.Move,
+            PlayerId = 0,
+            BrigadeId = infantry.Id,
+            TargetCoord = new HexCoord(6, 7)
+        });
+
+        Assert.False(result.Success);
+    }
+
+    [Fact]
+    public void Hill_IncreasesVisionRange()
+    {
+        var grid = new HexGrid(16, 16);
+        grid.SetTerrain(new HexCoord(4, 4), TerrainType.Hill);
+        var scout = UnitCatalog.CreateBrigade(UnitType.Scout, 0, new HexCoord(4, 4));
+
+        var visible = VisionHelper.GetVisibleHexes([scout], grid);
+
+        Assert.Contains(new HexCoord(10, 4), visible);
+        Assert.DoesNotContain(new HexCoord(11, 4), visible);
+    }
+
+    [Fact]
+    public void Map_IsGeneratedAt16x16()
+    {
+        var state = DefaultSkirmishMap.Create(GameMode.Hotseat);
+
+        Assert.Equal(16, state.Grid.Width);
+        Assert.Equal(16, state.Grid.Height);
+    }
+}
+
+public class NoMoveAfterFireTests
+{
+    [Fact]
+    public void Brigade_CannotMoveAfterFiring()
+    {
+        var state = DefaultSkirmishMap.Create(GameMode.Hotseat);
+        var tank = state.Brigades.First(b => b.UnitType == UnitType.Tank && b.PlayerId == 0);
+        var enemy = state.Brigades.First(b => b.PlayerId == 1);
+        tank.Position = new HexCoord(5, 7);
+        enemy.Position = new HexCoord(7, 7);
+
+        GameEngine.Execute(state, new GameCommand
+        {
+            Type = CommandType.UseWeapon,
+            PlayerId = 0,
+            BrigadeId = tank.Id,
+            WeaponId = "main_gun",
+            TargetCoord = enemy.Position
+        });
+
+        var result = GameEngine.Execute(state, new GameCommand
+        {
+            Type = CommandType.Move,
+            PlayerId = 0,
+            BrigadeId = tank.Id,
+            TargetCoord = new HexCoord(6, 7)
+        });
+
+        Assert.False(result.Success);
+        Assert.Contains("firing", result.Error!, StringComparison.OrdinalIgnoreCase);
     }
 }

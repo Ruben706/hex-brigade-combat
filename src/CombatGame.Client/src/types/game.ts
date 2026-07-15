@@ -1,8 +1,23 @@
+export type TerrainType =
+  | 'Plains'
+  | 'Forest'
+  | 'ShallowWater'
+  | 'DeepWater'
+  | 'Mountain'
+  | 'Hill';
+
+export interface TileDto {
+  q: number;
+  r: number;
+  terrain: string;
+}
+
 export interface GameStateDto {
   gameId: string;
   mode: string;
   gridWidth: number;
   gridHeight: number;
+  tiles?: TileDto[];
   currentPlayerId: number;
   turnNumber: number;
   phase: string;
@@ -35,6 +50,7 @@ export interface BrigadeDto {
   movementRange: number;
   movementPointsRemaining: number;
   visionRange: number;
+  revealedFromForest?: boolean;
   currentAccuracy: number;
 }
 
@@ -89,4 +105,13 @@ export const UNIT_LABELS: Record<string, string> = {
   Tank: 'TNK',
   Artillery: 'ART',
   AntiTank: 'ATK',
+};
+
+export const TERRAIN_COLORS: Record<string, string> = {
+  Plains: '#4a7c59',
+  Forest: '#2d5a3d',
+  ShallowWater: '#4a9ec4',
+  DeepWater: '#1a4a6e',
+  Mountain: '#5c5c5c',
+  Hill: '#8b7355',
 };

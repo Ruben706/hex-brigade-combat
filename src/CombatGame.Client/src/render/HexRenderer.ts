@@ -1,5 +1,5 @@
 import type { BrigadeDto, GameStateDto } from '../types/game';
-import { PLAYER_COLORS, UNIT_LABELS } from '../types/game';
+import { PLAYER_COLORS, TERRAIN_COLORS, UNIT_LABELS } from '../types/game';
 import { isBrigadeVisible, isHexVisible } from '../vision/fogOfWar';
 
 export interface HexCoord {
@@ -14,6 +14,7 @@ export interface RenderOptions {
   rangeHexes: HexCoord[];
   visibleHexes: Set<string> | null;
   viewingPlayerId: number;
+  terrain: Map<string, string>;
   damagePopups: DamagePopup[];
 }
 
@@ -24,9 +25,25 @@ export interface DamagePopup {
   opacity: number;
 }
 
-const HEX_SIZE = 32;
-/** Larger than draw radius so token clicks register reliably. */
-const BRIGADE_HIT_RADIUS = HEX_SIZE * 0.85;
+const DEFAULT_HEX_SIZE = 32;
+const BRIGADE_HIT_SCALE = 0.85;
+
+function terrainMovementCost(terrain: string): number {
+  switch (terrain) {
+    case 'Plains':
+      return 1;
+    case 'Forest':
+    case 'ShallowWater':
+    case 'Hill':
+      return 2;
+    default:
+      return Number.MAX_SAFE_INTEGER;
+  }
+}
+
+function isPassableTerrain(terrain: string): boolean {
+  return terrain !== 'DeepWater' && terrain !== 'Mountain';
+}
 
 export class HexRenderer {
   private ctx: CanvasRenderingContext2D;
@@ -36,6 +53,7 @@ export class HexRenderer {
   private offsetY = 0;
   private gridWidth = 0;
   private gridHeight = 0;
+  private hexSize = DEFAULT_HEX_SIZE;
 
   constructor(canvas: HTMLCanvasElement) {
     const ctx = canvas.getContext('2d');
@@ -58,22 +76,26 @@ export class HexRenderer {
   }
 
   private hexToPixelUncentered(q: number, r: number): { x: number; y: number } {
-    const x = HEX_SIZE * (Math.sqrt(3) * q + (Math.sqrt(3) / 2) * r);
-    const y = HEX_SIZE * ((3 / 2) * r);
+    const x = this.hexSize * (Math.sqrt(3) * q + (Math.sqrt(3) / 2) * r);
+    const y = this.hexSize * ((3 / 2) * r);
     return { x, y };
   }
 
   pixelToHex(x: number, y: number): HexCoord {
     const px = x - this.offsetX;
     const py = y - this.offsetY;
-    const q = ((Math.sqrt(3) / 3) * px - (1 / 3) * py) / HEX_SIZE;
-    const r = ((2 / 3) * py) / HEX_SIZE;
+    const q = ((Math.sqrt(3) / 3) * px - (1 / 3) * py) / this.hexSize;
+    const r = ((2 / 3) * py) / this.hexSize;
     return axialRound(q, r);
   }
 
   syncLayout(gridWidth: number, gridHeight: number): void {
     this.gridWidth = gridWidth;
     this.gridHeight = gridHeight;
+
+    const fitWidth = (this.width - 40) / (gridWidth * Math.sqrt(3));
+    const fitHeight = (this.height - 40) / (gridHeight * 1.5);
+    this.hexSize = Math.max(18, Math.min(DEFAULT_HEX_SIZE, Math.floor(Math.min(fitWidth, fitHeight))));
 
     const corners = [
       this.hexToPixelUncentered(0, 0),
@@ -87,11 +109,10 @@ export class HexRenderer {
     const minY = Math.min(...corners.map((c) => c.y));
     const maxY = Math.max(...corners.map((c) => c.y));
 
-    this.offsetX = (this.width - (maxX - minX)) / 2 - minX + HEX_SIZE;
-    this.offsetY = (this.height - (maxY - minY)) / 2 - minY + HEX_SIZE;
+    this.offsetX = (this.width - (maxX - minX)) / 2 - minX + this.hexSize;
+    this.offsetY = (this.height - (maxY - minY)) / 2 - minY + this.hexSize;
   }
 
-  /** Map a mouse event to canvas pixel coordinates (handles CSS scaling). */
   eventToCanvas(canvas: HTMLCanvasElement, event: MouseEvent): { x: number; y: number } {
     const rect = canvas.getBoundingClientRect();
     const scaleX = canvas.width / rect.width;
@@ -102,10 +123,9 @@ export class HexRenderer {
     };
   }
 
-  /** Pick the closest brigade whose hit circle contains the click. */
   pickBrigade(x: number, y: number, brigades: BrigadeDto[]): BrigadeDto | null {
     let best: BrigadeDto | null = null;
-    let bestDistance = BRIGADE_HIT_RADIUS;
+    let bestDistance = this.hexSize * BRIGADE_HIT_SCALE;
 
     for (const brigade of brigades) {
       const { x: bx, y: by } = this.hexToPixel(brigade.q, brigade.r);
@@ -137,15 +157,18 @@ export class HexRenderer {
       for (let q = 0; q < state.gridWidth; q++) {
         const hex = { q, r };
         const visible = !fogEnabled || isHexVisible(options.visibleHexes!, hex);
+        const terrain = options.terrain.get(`${q},${r}`) ?? 'Plains';
+        const baseFill = TERRAIN_COLORS[terrain] ?? '#2a3d52';
         const isMove = visible && options.highlightHexes.some((h) => h.q === q && h.r === r);
         const isAttack = visible && options.attackHexes.some((h) => h.q === q && h.r === r);
-        this.drawHex(
-          q,
-          r,
-          '#1e2a3a',
-          visible ? (isMove ? '#3d6b4f' : isAttack ? '#6b3d3d' : '#2a3d52') : '#141a22',
-          visible ? '#2a3d52' : '#0f1419',
-        );
+        const fill = visible
+          ? isMove
+            ? '#3d6b4f'
+            : isAttack
+              ? '#6b3d3d'
+              : baseFill
+          : '#141a22';
+        this.drawHex(q, r, '#1e2a3a', fill, visible ? '#2a3d52' : '#0f1419');
       }
     }
 
@@ -167,7 +190,13 @@ export class HexRenderer {
 
     for (const brigade of state.brigades) {
       if (
-        isBrigadeVisible(brigade, options.viewingPlayerId, options.visibleHexes ?? new Set())
+        isBrigadeVisible(
+          brigade,
+          options.viewingPlayerId,
+          options.visibleHexes ?? new Set(),
+          state.brigades,
+          options.terrain,
+        )
       ) {
         this.drawBrigade(brigade, brigade.id === options.selectedBrigadeId);
       }
@@ -185,8 +214,8 @@ export class HexRenderer {
     this.ctx.beginPath();
     for (let i = 0; i < 6; i++) {
       const angle = (Math.PI / 180) * (60 * i - 30);
-      const hx = x + HEX_SIZE * Math.cos(angle);
-      const hy = y + HEX_SIZE * Math.sin(angle);
+      const hx = x + this.hexSize * Math.cos(angle);
+      const hy = y + this.hexSize * Math.sin(angle);
       if (i === 0) {
         this.ctx.moveTo(hx, hy);
       } else {
@@ -206,8 +235,8 @@ export class HexRenderer {
     this.ctx.beginPath();
     for (let i = 0; i < 6; i++) {
       const angle = (Math.PI / 180) * (60 * i - 30);
-      const hx = x + HEX_SIZE * Math.cos(angle);
-      const hy = y + HEX_SIZE * Math.sin(angle);
+      const hx = x + this.hexSize * Math.cos(angle);
+      const hy = y + this.hexSize * Math.sin(angle);
       if (i === 0) {
         this.ctx.moveTo(hx, hy);
       } else {
@@ -224,8 +253,8 @@ export class HexRenderer {
     this.ctx.beginPath();
     for (let i = 0; i < 6; i++) {
       const angle = (Math.PI / 180) * (60 * i - 30);
-      const hx = x + HEX_SIZE * Math.cos(angle);
-      const hy = y + HEX_SIZE * Math.sin(angle);
+      const hx = x + this.hexSize * Math.cos(angle);
+      const hy = y + this.hexSize * Math.sin(angle);
       if (i === 0) {
         this.ctx.moveTo(hx, hy);
       } else {
@@ -241,7 +270,7 @@ export class HexRenderer {
   private drawBrigade(brigade: BrigadeDto, selected: boolean): void {
     const { x, y } = this.hexToPixel(brigade.q, brigade.r);
     const color = PLAYER_COLORS[brigade.playerId] ?? '#888';
-    const radius = HEX_SIZE * 0.55;
+    const radius = this.hexSize * 0.55;
 
     this.ctx.beginPath();
     this.ctx.arc(x, y, radius, 0, Math.PI * 2);
@@ -252,13 +281,13 @@ export class HexRenderer {
     this.ctx.stroke();
 
     this.ctx.fillStyle = '#fff';
-    this.ctx.font = 'bold 11px Segoe UI, sans-serif';
+    this.ctx.font = `bold ${Math.max(9, Math.round(this.hexSize * 0.34))}px Segoe UI, sans-serif`;
     this.ctx.textAlign = 'center';
     this.ctx.textBaseline = 'middle';
     this.ctx.fillText(UNIT_LABELS[brigade.unitType] ?? '?', x, y - 4);
 
     const hpPct = brigade.strength / brigade.maxStrength;
-    const barW = HEX_SIZE * 0.9;
+    const barW = this.hexSize * 0.9;
     const barH = 5;
     const barX = x - barW / 2;
     const barY = y + radius * 0.55;
@@ -284,7 +313,7 @@ export class HexRenderer {
     this.ctx.textBaseline = 'middle';
     this.ctx.globalAlpha = popup.opacity;
     this.ctx.fillStyle = popup.text === 'MISS' ? '#9fb3c8' : '#ff6b6b';
-    this.ctx.fillText(popup.text, x, y - HEX_SIZE * 0.9 - floatOffset);
+    this.ctx.fillText(popup.text, x, y - this.hexSize * 0.9 - floatOffset);
     this.ctx.globalAlpha = 1;
   }
 }
@@ -329,6 +358,7 @@ export function getReachableHexes(
   gridWidth: number,
   gridHeight: number,
   occupied: HexCoord[],
+  terrain: Map<string, string>,
 ): HexCoord[] {
   const occupiedSet = new Set(occupied.map((h) => `${h.q},${h.r}`));
   const startKey = `${start.q},${start.r}`;
@@ -356,7 +386,16 @@ export function getReachableHexes(
         continue;
       }
 
-      const nextCost = cost + 1;
+      const tileTerrain = terrain.get(`${neighbor.q},${neighbor.r}`) ?? 'Plains';
+      if (!isPassableTerrain(tileTerrain)) {
+        continue;
+      }
+
+      const nextCost = cost + terrainMovementCost(tileTerrain);
+      if (nextCost > movementRange) {
+        continue;
+      }
+
       const key = `${neighbor.q},${neighbor.r}`;
       const known = visited.get(key);
       if (known !== undefined && known <= nextCost) {

@@ -48,6 +48,11 @@ public static class GameEngine
             return CommandResult.Fail("Brigade cannot act this turn.");
         }
 
+        if (brigade.TurnState.UsedWeaponIds.Count > 0)
+        {
+            return CommandResult.Fail("Cannot move after firing.");
+        }
+
         if (command.TargetCoord is null)
         {
             return CommandResult.Fail("Target coordinate required.");
@@ -137,8 +142,13 @@ public static class GameEngine
             return CommandResult.Fail("Must target an enemy brigade.");
         }
 
-        var attack = DamageCalculator.ResolveAttack(weapon, brigade, target, state.Rng);
+        var attack = DamageCalculator.ResolveAttack(weapon, brigade, target, state.Rng, state.Grid);
         brigade.TurnState.UsedWeaponIds.Add(weapon.Id);
+
+        if (TerrainHelper.ConcealsUnits(state.Grid.GetTerrain(brigade.Position)))
+        {
+            brigade.TurnState.RevealedFromForest = true;
+        }
 
         if (!attack.Hit)
         {

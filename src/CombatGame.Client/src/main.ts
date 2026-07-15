@@ -16,7 +16,7 @@ import type {
   GameStateDto,
 } from './types/game';
 import { PLAYER_COLORS } from './types/game';
-import { computeVisibleHexes, getVisionRange, isBrigadeVisible, isHexVisible } from './vision/fogOfWar';
+import { computeVisibleHexes, buildTerrainMap, getVisionRange, isBrigadeVisible, isHexVisible } from './vision/fogOfWar';
 
 const app = document.querySelector<HTMLDivElement>('#app')!;
 
@@ -258,6 +258,11 @@ function startPopupAnimation(): void {
   popupAnimId = requestAnimationFrame(tick);
 }
 
+function getTerrainMap(): Map<string, string> {
+  if (!gameState) return new Map();
+  return buildTerrainMap(gameState.tiles, gameState.gridWidth, gameState.gridHeight);
+}
+
 function updateUi(): void {
   if (!gameState || !hexRenderer) return;
 
@@ -282,13 +287,15 @@ function refreshCanvas(): void {
   hexRenderer.resize(canvas.width, canvas.height);
 
   const viewingPlayerId = getVisionPlayerId();
+  const terrain = getTerrainMap();
   const visibleHexes = computeVisibleHexes(
     gameState.brigades,
     viewingPlayerId,
     gameState.gridWidth,
     gameState.gridHeight,
+    terrain,
   );
-  const { moveHexes, attackHexes, rangeHexes } = computeHighlights(visibleHexes);
+  const { moveHexes, attackHexes, rangeHexes } = computeHighlights(visibleHexes, terrain);
 
   hexRenderer.render(gameState, {
     selectedBrigadeId,
@@ -297,11 +304,15 @@ function refreshCanvas(): void {
     rangeHexes,
     visibleHexes,
     viewingPlayerId,
+    terrain,
     damagePopups: getActiveDamagePopups(),
   });
 }
 
-function computeHighlights(visibleHexes: Set<string>): {
+function computeHighlights(
+  visibleHexes: Set<string>,
+  terrain: Map<string, string>,
+): {
   moveHexes: HexCoord[];
   attackHexes: HexCoord[];
   rangeHexes: HexCoord[];
@@ -338,7 +349,7 @@ function computeHighlights(visibleHexes: Set<string>): {
   const brigade = gameState.brigades.find((b) => b.id === getActiveBrigadeId());
   if (!brigade) return { moveHexes, attackHexes, rangeHexes };
 
-  if (actionMode.kind === 'move' && brigade.movementPointsRemaining > 0 && !brigade.forfeitsActions) {
+  if (actionMode.kind === 'move' && brigade.movementPointsRemaining > 0 && !brigade.forfeitsActions && brigade.usedWeaponIds.length === 0) {
     const occupied = gameState.brigades
       .filter((b) => b.id !== brigade.id)
       .map((b) => ({ q: b.q, r: b.r }));
@@ -349,6 +360,7 @@ function computeHighlights(visibleHexes: Set<string>): {
         gameState.gridWidth,
         gameState.gridHeight,
         occupied,
+        terrain,
       ).filter((hex) => isHexVisible(visibleHexes, hex)),
     );
   }
@@ -440,7 +452,10 @@ function updateActionButtons(): void {
 
   const moveBtn = document.createElement('button');
   moveBtn.textContent = actionMode.kind === 'move' ? 'Cancel Move' : 'Move';
-  moveBtn.disabled = brigade.movementPointsRemaining <= 0 || brigade.forfeitsActions;
+  moveBtn.disabled =
+    brigade.movementPointsRemaining <= 0 ||
+    brigade.forfeitsActions ||
+    brigade.usedWeaponIds.length > 0;
   moveBtn.onclick = () => {
     if (actionMode.kind === 'move') {
       cancelAction(false);
@@ -518,7 +533,8 @@ function canBrigadeAutoMove(brigade: BrigadeDto): boolean {
     brigade.playerId === getControllingPlayerId() &&
     gameState.currentPlayerId === brigade.playerId &&
     !brigade.forfeitsActions &&
-    brigade.movementPointsRemaining > 0
+    brigade.movementPointsRemaining > 0 &&
+    brigade.usedWeaponIds.length === 0
   );
 }
 
@@ -541,14 +557,16 @@ async function handleCanvasClick(x: number, y: number): Promise<void> {
   if (!gameState || !gameId || !hexRenderer) return;
 
   const viewingPlayerId = getVisionPlayerId();
+  const terrain = getTerrainMap();
   const visibleHexes = computeVisibleHexes(
     gameState.brigades,
     viewingPlayerId,
     gameState.gridWidth,
     gameState.gridHeight,
+    terrain,
   );
   const visibleBrigades = gameState.brigades.filter((b) =>
-    isBrigadeVisible(b, viewingPlayerId, visibleHexes),
+    isBrigadeVisible(b, viewingPlayerId, visibleHexes, gameState!.brigades, terrain),
   );
 
   const brigadeAt = hexRenderer.pickBrigade(x, y, visibleBrigades);
@@ -562,7 +580,7 @@ async function handleCanvasClick(x: number, y: number): Promise<void> {
     const isValidMove =
       hexRenderer.isOnGrid(hex) &&
       isHexVisible(visibleHexes, hex) &&
-      computeHighlights(visibleHexes).moveHexes.some((h) => h.q === hex.q && h.r === hex.r);
+      computeHighlights(visibleHexes, terrain).moveHexes.some((h) => h.q === hex.q && h.r === hex.r);
 
     if (isValidMove) {
       const brigadeId = actionMode.brigadeId;
@@ -575,7 +593,7 @@ async function handleCanvasClick(x: number, y: number): Promise<void> {
       });
       selectedBrigadeId = brigadeId;
       const updated = gameState?.brigades.find((b) => b.id === brigadeId);
-      if (updated && updated.movementPointsRemaining > 0 && !updated.forfeitsActions) {
+      if (updated && updated.movementPointsRemaining > 0 && !updated.forfeitsActions && updated.usedWeaponIds.length === 0) {
         actionMode = { kind: 'move', brigadeId };
       } else {
         actionMode = { kind: 'none' };

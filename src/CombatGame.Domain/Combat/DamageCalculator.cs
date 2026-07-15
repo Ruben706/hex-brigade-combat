@@ -1,4 +1,5 @@
 using CombatGame.Domain.Enums;
+using CombatGame.Domain.Hex;
 using CombatGame.Domain.Units;
 
 namespace CombatGame.Domain.Combat;
@@ -30,7 +31,8 @@ public static class DamageCalculator
         Weapon weapon,
         Brigade attacker,
         Brigade defender,
-        Random rng)
+        Random rng,
+        HexGrid grid)
     {
         var accuracy = GetAccuracy(attacker);
         if (rng.NextDouble() > accuracy)
@@ -41,23 +43,23 @@ public static class DamageCalculator
         return new AttackResult
         {
             Hit = true,
-            Damage = CalculateDamage(weapon, attacker, defender),
+            Damage = CalculateDamage(weapon, attacker, defender, grid),
             Accuracy = accuracy
         };
     }
 
-    public static int CalculateDamage(Weapon weapon, Brigade attacker, Brigade defender)
+    public static int CalculateDamage(Weapon weapon, Brigade attacker, Brigade defender, HexGrid? grid = null)
     {
         var effectiveness = GetEffectiveness(weapon.Category, defender.GetArmorClass());
         var attackMultiplier = GetAttackMultiplier(attacker, weapon);
-        var defenseMultiplier = GetDefenseMultiplier(defender);
+        var defenseMultiplier = GetDefenseMultiplier(defender, grid, defender.Position);
 
         var raw = weapon.BaseDamage * effectiveness * attackMultiplier;
         var mitigated = raw / defenseMultiplier;
         return Math.Max(1, (int)Math.Round(mitigated));
     }
 
-    public static double GetDefenseMultiplier(Brigade brigade)
+    public static double GetDefenseMultiplier(Brigade brigade, HexGrid? grid = null, HexCoord? position = null)
     {
         var multiplier = 1.0 + brigade.BaseDefense / 100.0;
 
@@ -84,6 +86,11 @@ public static class DamageCalculator
         if (brigade.Upgrades.Contains(UpgradeType.Camouflage) && !brigade.MovedLastTurn)
         {
             multiplier *= 1.15;
+        }
+
+        if (grid is not null && position is not null)
+        {
+            multiplier *= TerrainHelper.GetDefenseMultiplier(grid.GetTerrain(position.Value));
         }
 
         return multiplier;

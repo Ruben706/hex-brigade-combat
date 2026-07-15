@@ -16,9 +16,17 @@ public sealed class GameStateDto
     public string Phase { get; init; } = "";
     public int? WinnerId { get; init; }
     public int AiPlayerId { get; init; }
+    public List<TileDto> Tiles { get; init; } = [];
     public List<BrigadeDto> Brigades { get; init; } = [];
     public List<GameEventDto> EventLog { get; init; } = [];
     public List<int> ConnectedPlayers { get; init; } = [];
+}
+
+public sealed class TileDto
+{
+    public int Q { get; init; }
+    public int R { get; init; }
+    public string Terrain { get; init; } = "";
 }
 
 public sealed class BrigadeDto
@@ -43,6 +51,7 @@ public sealed class BrigadeDto
     public int MovementRange { get; init; }
     public int MovementPointsRemaining { get; init; }
     public int VisionRange { get; init; }
+    public bool RevealedFromForest { get; init; }
     public double CurrentAccuracy { get; init; }
 }
 
@@ -101,7 +110,13 @@ public static class GameStateMapper
             WinnerId = state.WinnerId,
             AiPlayerId = state.AiPlayerId,
             ConnectedPlayers = state.ConnectedPlayers.Order().ToList(),
-            Brigades = state.Brigades.Select(ToBrigadeDto).ToList(),
+            Tiles = state.Grid.Tiles.Values.Select(t => new TileDto
+            {
+                Q = t.Coord.Q,
+                R = t.Coord.R,
+                Terrain = t.Terrain.ToString()
+            }).ToList(),
+            Brigades = state.Brigades.Select(b => ToBrigadeDto(b, state.Grid)).ToList(),
             EventLog = state.EventLog.Select(e => new GameEventDto
             {
                 Type = e.Type.ToString(),
@@ -115,7 +130,7 @@ public static class GameStateMapper
         };
     }
 
-    public static BrigadeDto ToBrigadeDto(Brigade brigade)
+    public static BrigadeDto ToBrigadeDto(Brigade brigade, HexGrid grid)
     {
         return new BrigadeDto
         {
@@ -151,7 +166,8 @@ public static class GameStateMapper
             }).ToList(),
             MovementRange = MovementHelper.GetMovementPoints(brigade),
             MovementPointsRemaining = brigade.TurnState.MovementPointsRemaining,
-            VisionRange = VisionHelper.GetVisionRange(brigade),
+            VisionRange = VisionHelper.GetEffectiveVisionRange(brigade, grid),
+            RevealedFromForest = brigade.TurnState.RevealedFromForest,
             CurrentAccuracy = Combat.DamageCalculator.GetAccuracy(brigade)
         };
     }

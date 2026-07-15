@@ -53,7 +53,19 @@ public static class MovementHelper
                     continue;
                 }
 
-                var nextCost = cost + 1;
+                var terrain = grid.GetTerrain(neighbor);
+                if (!TerrainHelper.IsPassable(terrain))
+                {
+                    continue;
+                }
+
+                var stepCost = TerrainHelper.GetMovementCost(terrain);
+                var nextCost = cost + stepCost;
+                if (nextCost > movementRange)
+                {
+                    continue;
+                }
+
                 if (visited.TryGetValue(neighbor, out var knownCost) && knownCost <= nextCost)
                 {
                     continue;
@@ -110,7 +122,19 @@ public static class MovementHelper
                     continue;
                 }
 
-                var nextCost = pathCost + 1;
+                var terrain = grid.GetTerrain(neighbor);
+                if (!TerrainHelper.IsPassable(terrain))
+                {
+                    continue;
+                }
+
+                var stepCost = TerrainHelper.GetMovementCost(terrain);
+                var nextCost = pathCost + stepCost;
+                if (nextCost > movementRange)
+                {
+                    continue;
+                }
+
                 if (visited.TryGetValue(neighbor, out var knownCost) && knownCost <= nextCost)
                 {
                     continue;

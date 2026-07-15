@@ -142,6 +142,11 @@ public sealed class AiController
             return false;
         }
 
+        if (brigade.TurnState.UsedWeaponIds.Count > 0)
+        {
+            return false;
+        }
+
         var enemies = state.GetEnemyBrigades(aiPlayer).ToList();
         if (enemies.Count == 0)
         {

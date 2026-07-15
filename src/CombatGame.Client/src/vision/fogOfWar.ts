@@ -1,5 +1,5 @@
-import { withinRange, type HexCoord } from '../render/HexRenderer';
-import type { BrigadeDto } from '../types/game';
+import { hexDistance, withinRange, type HexCoord } from '../render/HexRenderer';
+import type { BrigadeDto, TileDto } from '../types/game';
 
 const VISION_BY_UNIT: Record<string, number> = {
   Scout: 5,
@@ -17,11 +17,29 @@ export function hexKey(q: number, r: number): string {
   return `${q},${r}`;
 }
 
+export function buildTerrainMap(tiles: TileDto[] | undefined, gridWidth: number, gridHeight: number): Map<string, string> {
+  const map = new Map<string, string>();
+  if (tiles?.length) {
+    for (const tile of tiles) {
+      map.set(hexKey(tile.q, tile.r), tile.terrain);
+    }
+    return map;
+  }
+
+  for (let r = 0; r < gridHeight; r++) {
+    for (let q = 0; q < gridWidth; q++) {
+      map.set(hexKey(q, r), 'Plains');
+    }
+  }
+  return map;
+}
+
 export function computeVisibleHexes(
   brigades: BrigadeDto[],
   viewingPlayerId: number,
   gridWidth: number,
   gridHeight: number,
+  terrain: Map<string, string>,
 ): Set<string> {
   const visible = new Set<string>();
 
@@ -45,7 +63,18 @@ export function isBrigadeVisible(
   brigade: BrigadeDto,
   viewingPlayerId: number,
   visibleHexes: Set<string>,
+  allBrigades: BrigadeDto[],
+  terrain: Map<string, string>,
 ): boolean {
   if (brigade.playerId === viewingPlayerId) return true;
-  return isHexVisible(visibleHexes, { q: brigade.q, r: brigade.r });
+  if (!isHexVisible(visibleHexes, { q: brigade.q, r: brigade.r })) return false;
+
+  const tileTerrain = terrain.get(hexKey(brigade.q, brigade.r)) ?? 'Plains';
+  if (tileTerrain !== 'Forest') return true;
+  if (brigade.revealedFromForest) return true;
+
+  const friendlies = allBrigades.filter((b) => b.playerId === viewingPlayerId);
+  return friendlies.some(
+    (friendly) => hexDistance({ q: friendly.q, r: friendly.r }, { q: brigade.q, r: brigade.r }) === 1,
+  );
 }

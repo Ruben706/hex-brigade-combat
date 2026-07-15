@@ -9,6 +9,7 @@ public sealed class BrigadeTurnState
     public bool HasUsedAbility { get; set; }
     public bool ForfeitsActions { get; set; }
     public int MovementPointsRemaining { get; set; }
+    public bool RevealedFromForest { get; set; }
     public HashSet<string> UsedWeaponIds { get; } = [];
 }
 
