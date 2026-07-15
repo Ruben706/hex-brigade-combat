@@ -1,5 +1,7 @@
 import type { HexCoord } from './gameDomain.js';
 
+export const DEFAULT_MAP_SIZE = 16;
+
 export function offsetToAxial(col: number, row: number): HexCoord {
   return { q: col - (row - (row & 1)) / 2, r: row };
 }
@@ -8,9 +10,22 @@ export function axialToOffset(q: number, r: number): { col: number; row: number 
   return { col: q + (r - (r & 1)) / 2, row: r };
 }
 
-export function isOnOffsetGrid(q: number, r: number, width: number, height: number): boolean {
+function normalizeGridDimension(value: number, fallback: number): number {
+  return Number.isFinite(value) && value > 0 ? Math.trunc(value) : fallback;
+}
+
+export function isOnOffsetGrid(
+  q: number,
+  r: number,
+  width: number,
+  height: number,
+  fallbackSize = DEFAULT_MAP_SIZE,
+): boolean {
+  if (!Number.isFinite(q) || !Number.isFinite(r)) return false;
+  const w = normalizeGridDimension(width, fallbackSize);
+  const h = normalizeGridDimension(height, fallbackSize);
   const { col, row } = axialToOffset(q, r);
-  return col >= 0 && col < width && row >= 0 && row < height;
+  return col >= 0 && col < w && row >= 0 && row < h;
 }
 
 export function usesRectangularLayout(

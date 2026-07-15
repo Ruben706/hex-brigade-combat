@@ -173,21 +173,44 @@ export interface GameCommandDto {
   abilityId?: string;
 }
 
-export function commandFromDto(dto: GameCommandDto): GameCommand {
-  const targetCoord =
-    dto.targetCoord ??
-    (dto.targetQ !== undefined && dto.targetR !== undefined
-      ? { q: dto.targetQ, r: dto.targetR }
-      : undefined);
+function readCoordField(raw: Record<string, unknown>, ...keys: string[]): number | undefined {
+  for (const key of keys) {
+    const value = raw[key];
+    if (value == null || value === '') continue;
+    const n = Number(value);
+    if (Number.isFinite(n)) return Math.trunc(n);
+  }
+  return undefined;
+}
 
+function parseTargetCoord(dto: GameCommandDto): HexCoord | undefined {
+  const raw = dto as GameCommandDto & Record<string, unknown>;
+  if (dto.targetCoord) {
+    const q = Number(dto.targetCoord.q);
+    const r = Number(dto.targetCoord.r);
+    if (Number.isFinite(q) && Number.isFinite(r)) return { q: Math.trunc(q), r: Math.trunc(r) };
+  }
+
+  const q = readCoordField(raw, 'targetQ', 'TargetQ');
+  const r = readCoordField(raw, 'targetR', 'TargetR');
+  if (q == null || r == null) return undefined;
+  return { q, r };
+}
+
+export function commandFromDto(dto: GameCommandDto): GameCommand {
   return {
     type: dto.type,
     playerId: dto.playerId,
     brigadeId: dto.brigadeId,
-    targetCoord,
+    targetCoord: parseTargetCoord(dto),
     weaponId: dto.weaponId,
     abilityId: dto.abilityId,
   };
+}
+
+export function syncGridDimensions(state: InternalGameState): void {
+  state.gridWidth = MAP_SIZE;
+  state.gridHeight = MAP_SIZE;
 }
 
 // --- Hex ---
@@ -647,11 +670,15 @@ function coerceTileMap(tiles: unknown): TileMap {
 export function coerceInternalState(raw: Record<string, unknown>): InternalGameState {
   const record = raw as Record<string, unknown> & InternalGameState;
   const gameId = String(record.gameId ?? record['GameId'] ?? '');
+  const readDim = (value: unknown): number => {
+    const n = Number(value);
+    return Number.isFinite(n) && n > 0 ? Math.trunc(n) : MAP_SIZE;
+  };
   const state: InternalGameState = {
     gameId,
     mode: (record.mode ?? record['Mode'] ?? 'Hotseat') as GameMode,
-    gridWidth: Number(record.gridWidth ?? record['GridWidth'] ?? MAP_SIZE),
-    gridHeight: Number(record.gridHeight ?? record['GridHeight'] ?? MAP_SIZE),
+    gridWidth: readDim(record.gridWidth ?? record['GridWidth']),
+    gridHeight: readDim(record.gridHeight ?? record['GridHeight']),
     tiles: coerceTileMap(record.tiles ?? record['Tiles']),
     brigades: Array.isArray(record.brigades ?? record['Brigades'])
       ? (record.brigades ?? record['Brigades']) as Brigade[]
@@ -696,8 +723,7 @@ export function ensureMapGenerated(state: InternalGameState): boolean {
     state.gridHeight !== MAP_SIZE ||
     !hasCompleteOffsetTileSet(state.tiles, MAP_SIZE, MAP_SIZE);
 
-  state.gridWidth = MAP_SIZE;
-  state.gridHeight = MAP_SIZE;
+  syncGridDimensions(state);
   state.rngSeed = seed;
 
   if (needsFullRegen) {
@@ -777,8 +803,9 @@ function execMove(state: InternalGameState, cmd: GameCommand): CommandResult {
   if (b.turnState.usedWeaponIds.length > 0) return { success: false, error: 'Cannot move after firing.' };
   if (!cmd.targetCoord) return { success: false, error: 'Target coordinate required.' };
 
+  syncGridDimensions(state);
   const t = cmd.targetCoord;
-  if (!isOnOffsetGrid(t.q, t.r, state.gridWidth, state.gridHeight)) {
+  if (!isOnOffsetGrid(t.q, t.r, MAP_SIZE, MAP_SIZE)) {
     return { success: false, error: 'Target is outside the map.' };
   }
 
@@ -787,8 +814,8 @@ function execMove(state: InternalGameState, cmd: GameCommand): CommandResult {
     b.position,
     t,
     b.turnState.movementPointsRemaining,
-    state.gridWidth,
-    state.gridHeight,
+    MAP_SIZE,
+    MAP_SIZE,
     occupied,
     state.tiles,
   );

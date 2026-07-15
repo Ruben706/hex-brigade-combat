@@ -575,19 +575,23 @@ async function handleCanvasClick(x: number, y: number): Promise<void> {
   if (actionMode.kind === 'move') {
     if (!canActAsCurrentPlayer()) return;
 
-    const isValidMove =
-      hexRenderer.isOnGrid(hex) &&
-      isHexVisible(visibleHexes, hex) &&
-      computeHighlights(visibleHexes, terrain).moveHexes.some((h) => h.q === hex.q && h.r === hex.r);
+    const highlights = computeHighlights(visibleHexes, terrain);
+    const moveTarget =
+      hexRenderer.pickNearestHex(x, y, highlights.moveHexes) ??
+      (hexRenderer.isOnGrid(hex) &&
+      highlights.moveHexes.some((h) => h.q === hex.q && h.r === hex.r)
+        ? hex
+        : null);
 
-    if (isValidMove) {
+    if (moveTarget) {
       const brigadeId = actionMode.brigadeId;
       await sendCommand({
         type: 'Move',
         playerId: gameState.currentPlayerId,
         brigadeId,
-        targetQ: hex.q,
-        targetR: hex.r,
+        targetQ: moveTarget.q,
+        targetR: moveTarget.r,
+        targetCoord: { q: moveTarget.q, r: moveTarget.r },
       });
       selectedBrigadeId = brigadeId;
       const updated = gameState?.brigades.find((b) => b.id === brigadeId);

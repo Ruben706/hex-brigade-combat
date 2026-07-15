@@ -1,0 +1,28 @@
+name: Deploy Appwrite game-api
+
+on:
+  push:
+    branches: [master, main]
+    paths:
+      - 'appwrite/functions/game-api/**'
+      - '.github/workflows/deploy-appwrite.yml'
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Deploy game-api function
+        env:
+          APPWRITE_ENDPOINT: https://fra.cloud.appwrite.io/v1
+          APPWRITE_PROJECT_ID: ${{ vars.APPWRITE_PROJECT_ID || '6a574b63000d15c7e337' }}
+          APPWRITE_API_KEY: ${{ secrets.APPWRITE_API_KEY }}
+          APPWRITE_FUNCTION_ID: ${{ vars.VITE_APPWRITE_FUNCTION_ID || 'game-api' }}
+        run: node appwrite/scripts/deploy-function.mjs

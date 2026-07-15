@@ -144,6 +144,24 @@ export class HexRenderer {
     return this.pixelToHex(x, y);
   }
 
+  /** Snap a click to the nearest highlighted hex (avoids edge mis-picks). */
+  pickNearestHex(x: number, y: number, candidates: HexCoord[], maxDistance?: number): HexCoord | null {
+    const limit = maxDistance ?? this.hexSize * 0.92;
+    let best: HexCoord | null = null;
+    let bestDistance = limit;
+
+    for (const hex of candidates) {
+      const { x: hx, y: hy } = this.hexToPixel(hex.q, hex.r);
+      const distance = Math.hypot(x - hx, y - hy);
+      if (distance <= bestDistance) {
+        bestDistance = distance;
+        best = hex;
+      }
+    }
+
+    return best;
+  }
+
   isOnGrid(hex: HexCoord): boolean {
     return isOnOffsetGridCoord(hex, this.gridWidth, this.gridHeight);
   }

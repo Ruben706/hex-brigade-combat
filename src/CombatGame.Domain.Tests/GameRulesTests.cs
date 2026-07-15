@@ -497,6 +497,60 @@ public class TerrainTests
         Assert.True(result.Success);
         Assert.Equal(target, tank.Position);
     }
+    [Fact]
+    public void OffsetGrid_IncludesMapCornerTiles()
+    {
+        var state = DefaultSkirmishMap.Create(GameMode.Hotseat);
+
+        Assert.True(state.Grid.Contains(HexOffset.FromOddR(0, 15)));
+        Assert.True(state.Grid.Contains(HexOffset.FromOddR(15, 0)));
+        Assert.Equal(-7, HexOffset.FromOddR(0, 15).Q);
+        Assert.Equal(15, HexOffset.FromOddR(15, 0).Q);
+    }
+
+    [Fact]
+    public void CanMove_ToBottomLeftOffsetCorner()
+    {
+        var state = DefaultSkirmishMap.Create(GameMode.Hotseat);
+        var tank = state.Brigades.First(b => b.UnitType == UnitType.Tank && b.PlayerId == 0);
+        var start = HexOffset.FromOddR(2, 14);
+        var target = HexOffset.FromOddR(0, 15);
+        tank.Position = start;
+        TestMapHelper.SetPlains(state, start, target, HexOffset.FromOddR(1, 15), HexOffset.FromOddR(1, 14));
+
+        var result = GameEngine.Execute(state, new GameCommand
+        {
+            Type = CommandType.Move,
+            PlayerId = 0,
+            BrigadeId = tank.Id,
+            TargetCoord = target
+        });
+
+        Assert.True(result.Success);
+        Assert.Equal(target, tank.Position);
+    }
+
+    [Fact]
+    public void CanMove_ToTopRightOffsetCorner()
+    {
+        var state = DefaultSkirmishMap.Create(GameMode.Hotseat);
+        var tank = state.Brigades.First(b => b.UnitType == UnitType.Tank && b.PlayerId == 0);
+        var start = HexOffset.FromOddR(13, 1);
+        var target = HexOffset.FromOddR(15, 0);
+        tank.Position = start;
+        TestMapHelper.SetPlains(state, start, target, HexOffset.FromOddR(14, 0), HexOffset.FromOddR(14, 1));
+
+        var result = GameEngine.Execute(state, new GameCommand
+        {
+            Type = CommandType.Move,
+            PlayerId = 0,
+            BrigadeId = tank.Id,
+            TargetCoord = target
+        });
+
+        Assert.True(result.Success);
+        Assert.Equal(target, tank.Position);
+    }
 }
 
 public class NoMoveAfterFireTests

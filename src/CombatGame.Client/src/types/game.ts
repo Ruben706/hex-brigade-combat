@@ -85,6 +85,7 @@ export interface GameCommandDto {
   brigadeId?: string;
   targetQ?: number;
   targetR?: number;
+  targetCoord?: { q: number; r: number };
   weaponId?: string;
   abilityId?: string;
 }
