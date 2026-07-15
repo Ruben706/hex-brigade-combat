@@ -98,6 +98,9 @@ Or set `VITE_APPWRITE_FUNCTION_ID` in `src/CombatGame.Client/.env.local` for loc
 **Automated deploy (from repo root):**
 
 ```powershell
+cd appwrite/scripts
+npm ci
+cd ../..
 $env:APPWRITE_API_KEY = "your-api-key"
 node appwrite/scripts/deploy-function.mjs
 ```

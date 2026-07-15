@@ -2,7 +2,7 @@
  * Sets game-api function environment variables after deploy.
  * Reads APPWRITE_API_KEY from the environment.
  */
-import { Client, Functions } from '../functions/game-api/node_modules/node-appwrite/dist/index.mjs';
+import { Client, Functions } from 'node-appwrite';
 
 const ENDPOINT = process.env.APPWRITE_ENDPOINT ?? 'https://fra.cloud.appwrite.io/v1';
 const PROJECT_ID = process.env.APPWRITE_PROJECT_ID ?? '6a574b63000d15c7e337';

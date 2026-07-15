@@ -1,5 +1,5 @@
-import { Client, Functions, Runtime } from '../functions/game-api/node_modules/node-appwrite/dist/index.mjs';
-import { InputFile } from '../functions/game-api/node_modules/node-appwrite/dist/inputFile.mjs';
+import { Client, Functions, Runtime } from 'node-appwrite';
+import { InputFile } from 'node-appwrite/file';
 import { cp, mkdir, rm } from 'node:fs/promises';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
