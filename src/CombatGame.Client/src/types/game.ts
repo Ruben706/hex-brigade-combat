@@ -31,7 +31,9 @@ export interface BrigadeDto {
   usedWeaponIds: string[];
   weapons: WeaponDto[];
   abilities: AbilityDto[];
+  /** Max movement points per turn for this unit type. */
   movementRange: number;
+  movementPointsRemaining: number;
   currentAccuracy: number;
 }
 

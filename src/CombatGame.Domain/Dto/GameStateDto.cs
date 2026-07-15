@@ -41,6 +41,7 @@ public sealed class BrigadeDto
     public List<WeaponDto> Weapons { get; init; } = [];
     public List<AbilityDto> Abilities { get; init; } = [];
     public int MovementRange { get; init; }
+    public int MovementPointsRemaining { get; init; }
     public double CurrentAccuracy { get; init; }
 }
 
@@ -147,7 +148,8 @@ public static class GameStateMapper
                 Type = a.Type.ToString(),
                 Description = a.Description
             }).ToList(),
-            MovementRange = MovementHelper.GetMovementRange(brigade),
+            MovementRange = MovementHelper.GetMovementPoints(brigade),
+            MovementPointsRemaining = brigade.TurnState.MovementPointsRemaining,
             CurrentAccuracy = Combat.DamageCalculator.GetAccuracy(brigade)
         };
     }

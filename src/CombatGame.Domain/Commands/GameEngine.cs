@@ -38,9 +38,9 @@ public static class GameEngine
             return CommandResult.Fail("Brigade not found.");
         }
 
-        if (brigade.TurnState.HasMoved)
+        if (brigade.TurnState.MovementPointsRemaining <= 0)
         {
-            return CommandResult.Fail("Brigade already moved.");
+            return CommandResult.Fail("No movement points remaining.");
         }
 
         if (brigade.TurnState.ForfeitsActions)
@@ -59,14 +59,19 @@ public static class GameEngine
             return CommandResult.Fail("Target is outside the map.");
         }
 
+        if (brigade.Position.DistanceTo(target) != 1)
+        {
+            return CommandResult.Fail("Move one hex at a time.");
+        }
+
         if (!MovementHelper.CanReach(
                 brigade.Position,
                 target,
-                MovementHelper.GetMovementRange(brigade),
+                1,
                 state.Grid,
                 state.Brigades.Where(b => b.Id != brigade.Id).Select(b => b.Position)))
         {
-            return CommandResult.Fail("Target is out of movement range.");
+            return CommandResult.Fail("Target is not a valid adjacent hex.");
         }
 
         if (state.GetBrigadeAt(target) is not null)
@@ -77,6 +82,7 @@ public static class GameEngine
         TurnManager.ClearMovementStatuses(brigade);
         brigade.Position = target;
         brigade.TurnState.HasMoved = true;
+        brigade.TurnState.MovementPointsRemaining--;
         state.AddEvent(GameEventType.Moved,
             $"Player {brigade.PlayerId}'s {brigade.UnitType} moved to ({target.Q},{target.R}).");
         return CommandResult.Ok();
@@ -225,6 +231,7 @@ public static class GameEngine
             case AbilityType.Setup:
                 brigade.TurnState.ForfeitsActions = true;
                 brigade.TurnState.HasMoved = true;
+                brigade.TurnState.MovementPointsRemaining = 0;
                 brigade.RemoveStatus(StatusEffectType.ArtilleryReady);
 
                 if (brigade.Upgrades.Contains(UpgradeType.RapidDeployment))
@@ -256,6 +263,7 @@ public static class GameEngine
                 }
 
                 brigade.TurnState.HasMoved = true;
+                brigade.TurnState.MovementPointsRemaining = 0;
                 brigade.StatusEffects.Add(new StatusEffect
                 {
                     Type = StatusEffectType.Ambush,

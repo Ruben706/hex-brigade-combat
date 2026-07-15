@@ -288,14 +288,14 @@ function computeHighlights(): { moveHexes: HexCoord[]; attackHexes: HexCoord[] }
   const brigade = gameState.brigades.find((b) => b.id === getActiveBrigadeId());
   if (!brigade) return { moveHexes, attackHexes };
 
-  if (actionMode.kind === 'move' && !brigade.hasMoved && !brigade.forfeitsActions) {
+  if (actionMode.kind === 'move' && brigade.movementPointsRemaining > 0 && !brigade.forfeitsActions) {
     const occupied = gameState.brigades
       .filter((b) => b.id !== brigade.id)
       .map((b) => ({ q: b.q, r: b.r }));
     moveHexes.push(
       ...getReachableHexes(
         { q: brigade.q, r: brigade.r },
-        brigade.movementRange,
+        1,
         gameState.gridWidth,
         gameState.gridHeight,
         occupied,
@@ -359,6 +359,7 @@ function updateBrigadePanel(): void {
     <p>Defense: ${brigade.baseDefense} | XP: ${brigade.experience}</p>
     <p>Position: (${brigade.q}, ${brigade.r})</p>
     <p>Status: ${brigade.statusEffects.length ? brigade.statusEffects.join(', ') : 'None'}</p>
+    <p>Movement: ${brigade.movementPointsRemaining}/${brigade.movementRange} points</p>
     <p>Accuracy: ${Math.round(brigade.currentAccuracy * 100)}%${brigade.hasMoved ? ' (moved — halved)' : ''}</p>
     <p>Upgrades: ${brigade.upgrades.length ? brigade.upgrades.join(', ') : 'None'}</p>
     <p>Moved: ${brigade.hasMoved ? 'Yes' : 'No'} | Ability used: ${brigade.hasUsedAbility ? 'Yes' : 'No'}</p>
@@ -387,7 +388,7 @@ function updateActionButtons(): void {
 
   const moveBtn = document.createElement('button');
   moveBtn.textContent = actionMode.kind === 'move' ? 'Cancel Move' : 'Move';
-  moveBtn.disabled = brigade.hasMoved || brigade.forfeitsActions;
+  moveBtn.disabled = brigade.movementPointsRemaining <= 0 || brigade.forfeitsActions;
   moveBtn.onclick = () => {
     if (actionMode.kind === 'move') {
       cancelAction(false);
@@ -453,8 +454,8 @@ function canBrigadeAutoMove(brigade: BrigadeDto): boolean {
     canActAsCurrentPlayer() &&
     brigade.playerId === getControllingPlayerId() &&
     gameState.currentPlayerId === brigade.playerId &&
-    !brigade.hasMoved &&
-    !brigade.forfeitsActions
+    !brigade.forfeitsActions &&
+    brigade.movementPointsRemaining > 0
   );
 }
 
@@ -498,7 +499,12 @@ async function handleCanvasClick(x: number, y: number): Promise<void> {
         targetR: hex.r,
       });
       selectedBrigadeId = brigadeId;
-      actionMode = { kind: 'none' };
+      const updated = gameState?.brigades.find((b) => b.id === brigadeId);
+      if (updated && updated.movementPointsRemaining > 0 && !updated.forfeitsActions) {
+        actionMode = { kind: 'move', brigadeId };
+      } else {
+        actionMode = { kind: 'none' };
+      }
       refreshRenderer();
       return;
     }

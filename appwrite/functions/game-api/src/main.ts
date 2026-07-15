@@ -4,7 +4,9 @@ import {
   executeCommand,
   runAiTurn,
   toDto,
+  commandFromDto,
   type GameCommand,
+  type GameCommandDto,
   type GameMode,
 } from './domain/gameDomain.js';
 
@@ -60,7 +62,7 @@ interface RequestBody {
   mode?: GameMode;
   gameId?: string;
   playerId?: number;
-  command?: GameCommand;
+  command?: GameCommandDto;
 }
 
 export default async function handler({ req, res, log, error }: {
@@ -115,7 +117,7 @@ export default async function handler({ req, res, log, error }: {
         const internal = await loadState(tablesDB, body.gameId);
         if (!internal) return res.json({ success: false, error: 'Game not found' }, 404);
 
-        const result = executeCommand(internal, body.command);
+        const result = executeCommand(internal, commandFromDto(body.command));
         if (!result.success) {
           return res.json({ success: false, error: result.error });
         }

@@ -166,27 +166,36 @@ public class DigInTests
 public class TurnActionLimitTests
 {
     [Fact]
-    public void Brigade_CannotMoveTwice()
+    public void Brigade_CannotMoveAfterUsingAllMovementPoints()
     {
         var state = DefaultSkirmishMap.Create(GameMode.Hotseat);
         var infantry = state.Brigades.First(b => b.UnitType == UnitType.Infantry && b.PlayerId == 0);
         var first = new HexCoord(infantry.Position.Q + 1, infantry.Position.R);
         var second = new HexCoord(first.Q + 1, first.R);
+        var third = new HexCoord(second.Q + 1, second.R);
 
-        GameEngine.Execute(state, new GameCommand
+        Assert.True(GameEngine.Execute(state, new GameCommand
         {
             Type = CommandType.Move,
             PlayerId = 0,
             BrigadeId = infantry.Id,
             TargetCoord = first
-        });
+        }).Success);
+
+        Assert.True(GameEngine.Execute(state, new GameCommand
+        {
+            Type = CommandType.Move,
+            PlayerId = 0,
+            BrigadeId = infantry.Id,
+            TargetCoord = second
+        }).Success);
 
         var result = GameEngine.Execute(state, new GameCommand
         {
             Type = CommandType.Move,
             PlayerId = 0,
             BrigadeId = infantry.Id,
-            TargetCoord = second
+            TargetCoord = third
         });
 
         Assert.False(result.Success);
@@ -272,26 +281,64 @@ public class UpgradeTests
 public class MovementTests
 {
     [Fact]
-    public void Tank_CanMoveTwoHexes()
+    public void Tank_CanMoveFourHexes_StepByStep()
     {
         var state = DefaultSkirmishMap.Create(GameMode.Hotseat);
         var tank = state.Brigades.First(b => b.UnitType == UnitType.Tank && b.PlayerId == 0);
         tank.Position = new HexCoord(5, 3);
 
-        var result = GameEngine.Execute(state, new GameCommand
+        for (var i = 1; i <= 4; i++)
         {
-            Type = CommandType.Move,
-            PlayerId = 0,
-            BrigadeId = tank.Id,
-            TargetCoord = new HexCoord(7, 3)
-        });
+            var result = GameEngine.Execute(state, new GameCommand
+            {
+                Type = CommandType.Move,
+                PlayerId = 0,
+                BrigadeId = tank.Id,
+                TargetCoord = new HexCoord(5 + i, 3)
+            });
 
-        Assert.True(result.Success);
-        Assert.Equal(new HexCoord(7, 3), tank.Position);
+            Assert.True(result.Success, $"Move step {i} failed");
+        }
+
+        Assert.Equal(new HexCoord(9, 3), tank.Position);
+        Assert.Equal(0, tank.TurnState.MovementPointsRemaining);
     }
 
     [Fact]
-    public void Infantry_CannotMoveTwoHexes()
+    public void Infantry_CanMoveTwoHexes_StepByStep()
+    {
+        var state = DefaultSkirmishMap.Create(GameMode.Hotseat);
+        var infantry = state.Brigades.First(b => b.UnitType == UnitType.Infantry && b.PlayerId == 0);
+        infantry.Position = new HexCoord(5, 3);
+
+        Assert.True(GameEngine.Execute(state, new GameCommand
+        {
+            Type = CommandType.Move,
+            PlayerId = 0,
+            BrigadeId = infantry.Id,
+            TargetCoord = new HexCoord(6, 3)
+        }).Success);
+
+        Assert.True(GameEngine.Execute(state, new GameCommand
+        {
+            Type = CommandType.Move,
+            PlayerId = 0,
+            BrigadeId = infantry.Id,
+            TargetCoord = new HexCoord(7, 3)
+        }).Success);
+
+        Assert.Equal(new HexCoord(7, 3), infantry.Position);
+        Assert.False(GameEngine.Execute(state, new GameCommand
+        {
+            Type = CommandType.Move,
+            PlayerId = 0,
+            BrigadeId = infantry.Id,
+            TargetCoord = new HexCoord(8, 3)
+        }).Success);
+    }
+
+    [Fact]
+    public void Infantry_CannotSkipHexesInOneMove()
     {
         var state = DefaultSkirmishMap.Create(GameMode.Hotseat);
         var infantry = state.Brigades.First(b => b.UnitType == UnitType.Infantry && b.PlayerId == 0);

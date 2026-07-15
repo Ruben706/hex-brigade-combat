@@ -1,5 +1,6 @@
 using CombatGame.Domain.Enums;
 using CombatGame.Domain.Hex;
+using CombatGame.Domain.Turn;
 using CombatGame.Domain.Units;
 
 namespace CombatGame.Domain.Maps;
@@ -52,6 +53,7 @@ public static class DefaultSkirmishMap
         }
 
         state.AddEvent(GameEventType.TurnEnded, "Battle begins! Player 0's turn.");
+        TurnManager.ResetBrigadeTurnStates(state);
         return state;
     }
 }

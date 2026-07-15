@@ -31,7 +31,9 @@ public sealed class AiController
                 continue;
             }
 
-            TryMoveTowardEnemy(state, brigade, aiPlayer);
+            while (TryMoveTowardEnemy(state, brigade, aiPlayer))
+            {
+            }
         }
 
         if (state.Phase == GamePhase.InProgress && state.CurrentPlayerId == aiPlayer)
@@ -135,7 +137,7 @@ public sealed class AiController
 
     private static bool TryMoveTowardEnemy(GameState state, Brigade brigade, int aiPlayer)
     {
-        if (brigade.TurnState.HasMoved || brigade.TurnState.ForfeitsActions)
+        if (brigade.TurnState.MovementPointsRemaining <= 0 || brigade.TurnState.ForfeitsActions)
         {
             return false;
         }
@@ -155,7 +157,7 @@ public sealed class AiController
 
         var reachable = MovementHelper.GetReachableHexes(
             brigade.Position,
-            MovementHelper.GetMovementRange(brigade),
+            1,
             state.Grid,
             state.Brigades.Where(b => b.Id != brigade.Id).Select(b => b.Position));
 

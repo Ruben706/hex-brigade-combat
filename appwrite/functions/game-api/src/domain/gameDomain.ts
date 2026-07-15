@@ -37,6 +37,7 @@ export interface BrigadeTurnState {
   hasMoved: boolean;
   hasUsedAbility: boolean;
   forfeitsActions: boolean;
+  movementPointsRemaining: number;
   usedWeaponIds: string[];
 }
 
@@ -131,7 +132,36 @@ export interface BrigadeDto {
   weapons: Weapon[];
   abilities: Ability[];
   movementRange: number;
+  movementPointsRemaining: number;
   currentAccuracy: number;
+}
+
+export interface GameCommandDto {
+  type: CommandType;
+  playerId: number;
+  brigadeId?: string;
+  targetQ?: number;
+  targetR?: number;
+  targetCoord?: HexCoord;
+  weaponId?: string;
+  abilityId?: string;
+}
+
+export function commandFromDto(dto: GameCommandDto): GameCommand {
+  const targetCoord =
+    dto.targetCoord ??
+    (dto.targetQ !== undefined && dto.targetR !== undefined
+      ? { q: dto.targetQ, r: dto.targetR }
+      : undefined);
+
+  return {
+    type: dto.type,
+    playerId: dto.playerId,
+    brigadeId: dto.brigadeId,
+    targetCoord,
+    weaponId: dto.weaponId,
+    abilityId: dto.abilityId,
+  };
 }
 
 // --- Hex ---
@@ -228,7 +258,13 @@ export function createBrigade(type: UnitType, playerId: number, position: HexCoo
     experience: 0,
     upgrades: [],
     statusEffects: [],
-    turnState: { hasMoved: false, hasUsedAbility: false, forfeitsActions: false, usedWeaponIds: [] },
+    turnState: {
+      hasMoved: false,
+      hasUsedAbility: false,
+      forfeitsActions: false,
+      movementPointsRemaining: getMovementPointsForUnit(type),
+      usedWeaponIds: [],
+    },
     movedLastTurn: false,
   };
 }
@@ -260,8 +296,24 @@ function getAvailableUpgrades(b: Brigade): string[] {
     .map(([u]) => u);
 }
 
-export function getMovementRange(b: Brigade): number {
-  return b.unitType === 'Tank' ? 2 : 1;
+export function getMovementPointsForUnit(unitType: UnitType): number {
+  switch (unitType) {
+    case 'Tank': return 4;
+    case 'Artillery': return 1;
+    case 'Infantry':
+    case 'AntiTank':
+      return 2;
+    default:
+      return 1;
+  }
+}
+
+export function getMovementPoints(b: Brigade): number {
+  return getMovementPointsForUnit(b.unitType);
+}
+
+function resetMovementPoints(b: Brigade): void {
+  b.turnState.movementPointsRemaining = getMovementPoints(b);
 }
 
 function getReachableHexes(start: HexCoord, range: number, gridW: number, gridH: number, occupied: Set<string>): HexCoord[] {
@@ -388,7 +440,11 @@ function processBrigadeStatusTick(b: Brigade): void {
 
 function resetTurnStates(state: InternalGameState): void {
   for (const b of state.brigades) {
-    b.turnState = { hasMoved: false, hasUsedAbility: false, forfeitsActions: false, usedWeaponIds: [] };
+    b.turnState.hasMoved = false;
+    b.turnState.hasUsedAbility = false;
+    b.turnState.forfeitsActions = false;
+    b.turnState.usedWeaponIds = [];
+    resetMovementPoints(b);
   }
 }
 
@@ -457,7 +513,7 @@ export function executeCommand(state: InternalGameState, command: GameCommand): 
 function execMove(state: InternalGameState, cmd: GameCommand): CommandResult {
   const b = cmd.brigadeId ? getBrigade(state, cmd.brigadeId) : undefined;
   if (!b || b.playerId !== cmd.playerId) return { success: false, error: 'Brigade not found.' };
-  if (b.turnState.hasMoved) return { success: false, error: 'Brigade already moved.' };
+  if (b.turnState.movementPointsRemaining <= 0) return { success: false, error: 'No movement points remaining.' };
   if (b.turnState.forfeitsActions) return { success: false, error: 'Brigade cannot act this turn.' };
   if (!cmd.targetCoord) return { success: false, error: 'Target coordinate required.' };
 
@@ -466,16 +522,21 @@ function execMove(state: InternalGameState, cmd: GameCommand): CommandResult {
     return { success: false, error: 'Target is outside the map.' };
   }
 
+  if (hexDistance(b.position, t) !== 1) {
+    return { success: false, error: 'Move one hex at a time.' };
+  }
+
   const occupied = new Set(state.brigades.filter((br) => br.id !== b.id).map((br) => hexKey(br.position)));
-  const reachable = getReachableHexes(b.position, getMovementRange(b), state.gridWidth, state.gridHeight, occupied);
+  const reachable = getReachableHexes(b.position, 1, state.gridWidth, state.gridHeight, occupied);
   if (!reachable.some((h) => h.q === t.q && h.r === t.r)) {
-    return { success: false, error: 'Target is out of movement range.' };
+    return { success: false, error: 'Target is not a valid adjacent hex.' };
   }
   if (getBrigadeAt(state, t)) return { success: false, error: 'Target hex is occupied.' };
 
   clearMovementStatuses(b);
   b.position = t;
   b.turnState.hasMoved = true;
+  b.turnState.movementPointsRemaining--;
   addEvent(state, 'Moved', `Player ${b.playerId}'s ${b.unitType} moved to (${t.q},${t.r}).`);
   return { success: true };
 }
@@ -546,6 +607,7 @@ function execAbility(state: InternalGameState, cmd: GameCommand): CommandResult 
   } else if (ability.type === 'Setup') {
     b.turnState.forfeitsActions = true;
     b.turnState.hasMoved = true;
+    b.turnState.movementPointsRemaining = 0;
     removeStatus(b, 'ArtilleryReady');
     if (b.upgrades.includes('RapidDeployment')) {
       b.statusEffects.push({ type: 'ArtilleryReady', remainingTurns: -1 });
@@ -557,6 +619,7 @@ function execAbility(state: InternalGameState, cmd: GameCommand): CommandResult 
   } else if (ability.type === 'Ambush') {
     if (b.turnState.hasMoved) return { success: false, error: 'Cannot ambush after moving.' };
     b.turnState.hasMoved = true;
+    b.turnState.movementPointsRemaining = 0;
     b.statusEffects.push({ type: 'Ambush', remainingTurns: 1 });
     addEvent(state, 'AbilityUsed', `${b.unitType} prepared an ambush (+30% defense, +20% AT damage).`);
   }
@@ -573,7 +636,9 @@ export function runAiTurn(state: InternalGameState): void {
     if (state.phase === 'Victory') break;
     if (trySetupArtillery(state, b, ai)) continue;
     if (tryAttack(state, b, ai)) continue;
-    tryMoveTowardEnemy(state, b, ai);
+    while (tryMoveTowardEnemy(state, b, ai)) {
+      /* spend remaining movement points one hex at a time */
+    }
   }
 
   if (state.phase === 'InProgress' && state.currentPlayerId === ai) {
@@ -609,7 +674,7 @@ function tryAttack(state: InternalGameState, b: Brigade, ai: number): boolean {
 }
 
 function tryMoveTowardEnemy(state: InternalGameState, b: Brigade, ai: number): boolean {
-  if (b.turnState.hasMoved || b.turnState.forfeitsActions) return false;
+  if (b.turnState.movementPointsRemaining <= 0 || b.turnState.forfeitsActions) return false;
   const enemies = state.brigades.filter((br) => br.playerId !== ai);
   if (enemies.length === 0) return false;
 
@@ -617,7 +682,7 @@ function tryMoveTowardEnemy(state: InternalGameState, b: Brigade, ai: number): b
     hexDistance(b.position, e.position) < hexDistance(b.position, a.position) ? e : a);
 
   const occupied = new Set(state.brigades.filter((br) => br.id !== b.id).map((br) => hexKey(br.position)));
-  const reachable = getReachableHexes(b.position, getMovementRange(b), state.gridWidth, state.gridHeight, occupied);
+  const reachable = getReachableHexes(b.position, 1, state.gridWidth, state.gridHeight, occupied);
 
   let best: HexCoord | null = null;
   let bestDist = hexDistance(b.position, nearest.position);
@@ -661,7 +726,8 @@ export function toDto(state: InternalGameState): GameStateDto {
       usedWeaponIds: [...b.turnState.usedWeaponIds],
       weapons: getWeapons(b),
       abilities: getAbilities(b),
-      movementRange: getMovementRange(b),
+      movementRange: getMovementPoints(b),
+      movementPointsRemaining: b.turnState.movementPointsRemaining,
       currentAccuracy: getAccuracy(b),
     })),
     eventLog: [...state.eventLog],
@@ -698,6 +764,8 @@ export function fromDto(dto: GameStateDto): InternalGameState {
         hasMoved: b.hasMoved,
         hasUsedAbility: b.hasUsedAbility,
         forfeitsActions: b.forfeitsActions,
+        movementPointsRemaining:
+          b.movementPointsRemaining ?? getMovementPointsForUnit(b.unitType as UnitType),
         usedWeaponIds: [...b.usedWeaponIds],
       },
     })),

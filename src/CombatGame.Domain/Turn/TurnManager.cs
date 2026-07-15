@@ -15,6 +15,7 @@ public static class TurnManager
             brigade.TurnState.HasUsedAbility = false;
             brigade.TurnState.ForfeitsActions = false;
             brigade.TurnState.UsedWeaponIds.Clear();
+            MovementHelper.ResetMovementPoints(brigade);
         }
     }
 

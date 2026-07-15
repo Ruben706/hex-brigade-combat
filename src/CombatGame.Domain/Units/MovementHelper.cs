@@ -5,13 +5,19 @@ namespace CombatGame.Domain.Units;
 
 public static class MovementHelper
 {
-    public static int GetMovementRange(UnitType unitType) => unitType switch
+    public static int GetMovementPoints(UnitType unitType) => unitType switch
     {
-        UnitType.Tank => 2,
+        UnitType.Tank => 4,
+        UnitType.Artillery => 1,
+        UnitType.Infantry => 2,
+        UnitType.AntiTank => 2,
         _ => 1
     };
 
-    public static int GetMovementRange(Brigade brigade) => GetMovementRange(brigade.UnitType);
+    public static int GetMovementPoints(Brigade brigade) => GetMovementPoints(brigade.UnitType);
+
+    public static void ResetMovementPoints(Brigade brigade) =>
+        brigade.TurnState.MovementPointsRemaining = GetMovementPoints(brigade);
 
     public static HashSet<HexCoord> GetReachableHexes(
         HexCoord start,
