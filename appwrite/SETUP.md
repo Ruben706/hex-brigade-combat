@@ -113,6 +113,14 @@ For GitHub Pages, add repository variables (Settings → Secrets and variables �
 | `VITE_APPWRITE_DATABASE_ID` | `6a5750b8002d1d05b18f` |
 | `VITE_APPWRITE_GAMES_COLLECTION_ID` | `games` |
 
+Also add a **repository secret** (Settings → Secrets and variables → Actions → Secrets):
+
+| Secret | Value |
+|--------|-------|
+| `APPWRITE_API_KEY` | Your Appwrite server API key (scopes: `databases.read`, `databases.write`, `functions.read`, `functions.write`) |
+
+The **Deploy Appwrite game-api** workflow needs this secret; without it deploy fails immediately.
+
 ---
 
 ## Step 4 — Allow your website to connect (CORS)
